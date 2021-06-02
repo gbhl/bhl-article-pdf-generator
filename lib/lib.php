@@ -225,7 +225,7 @@ function get_bhl_pages($pages = array()) {
 	if (!$bhl_dbh) {
 		try {
 			$bhl_dbh = new PDO(
-				'dblib:host=sil-cl01-bhl.us.sinet.si.edu:1433;dbname=BHL',
+				'sqlsrv:server=tcp:sil-cl01-bhl.us.sinet.si.edu,1433;Database=BHL',
 				'BHLReadOnly',
 				'BHLR3ad0n!y', 
 				array('PDO::ATTR_ERRMODE' => PDO::ERRMODE_EXCEPTION)
