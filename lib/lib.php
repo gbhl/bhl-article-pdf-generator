@@ -73,7 +73,7 @@ function get_djvu($identifier, $override = false) {
 	$filename = $identifier.'_djvu.xml';
 	$cache_path = $config['paths']['cache_djvu'].'/'.$filename;
 	if (!file_exists($cache_path) || $override) {
-		$djvu = $config['isilon_root']."/{$letter}/{$identifier}/{$identifier}_djvu.xml";
+		$djvu = $config['local_source_path']."/{$letter}/{$identifier}/{$identifier}_djvu.xml";
 		// Do we have the file locally?
 		if (file_exists($djvu)) {
 			// Do we have it on the Isilon?
@@ -96,7 +96,7 @@ function get_page_images($pages, $identifier, $override = false) {
 	global $config;
 
 	$letter = substr($identifier,0,1);
-	$jp2_zip = $config['isilon_root']."/{$letter}/{$identifier}/{$identifier}_jp2.zip";
+	$jp2_zip = $config['local_source_path']."/{$letter}/{$identifier}/{$identifier}_jp2.zip";
 	// Do we have a path and JP2s in the Isilon?
 	if (file_exists($jp2_zip)) {
 		// Get the list of filenames
