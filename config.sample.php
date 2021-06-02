@@ -37,6 +37,10 @@ $config['paths']['output']       = './output';
 // 
 // If you have a local copy of the files, this is where they will be found.
 // The default is the current directory which effectively turns it off.
+// 
+// Expects the structure in this folder to be: 
+// 
+//    I/Identifier00 (first letter, IA identifier)
 // ---------------------------------------------
 $config['local_source_path'] = './'; 
 
