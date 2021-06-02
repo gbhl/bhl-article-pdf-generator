@@ -36,7 +36,7 @@ $item = get_bhl_item($part['ItemID']);
 $item = $item['Result'][0]; // deference this fo ease of use
 
 // Get the pages from BHL because maybe I need the file name prefix
-$page_details = get_bhl_pages($pages);
+$page_details = get_bhl_pages($pages, $item['SourceIdentifier']);
 
 // Get our PDF
 print "Getting DJVU...\n";
@@ -44,18 +44,57 @@ $djvu_path = get_djvu($item['SourceIdentifier']);
 
 // Get our Images
 print "Getting Images...\n";
-get_page_images($page_details);
+$ret = get_page_images($page_details, $item['SourceIdentifier']);
+if (!$ret) {
+	exit(1);
+}
 
 // Get the DJVU fata
 $djvu = new PhpDjvu($djvu_path);
 
-$output_filename = 	$config['paths']['output'].'/bhl-segment-'.$id.'.pdf';
+// Set out filename
+$output_filename = 	$config['paths']['output'].'/bhl-segment-'.$id.($config['desaturate'] ? '-grey' : '').'.pdf';
 
-$page_width = 8.5; // Inches
-$page_height = 11; // Inches 
-$page_aspect_ratio = $page_width / $page_height;
+// ------------------------------
+// Calculate the size of our page
+// ------------------------------
+$page_width_mm = 0;
+$page_height_mm = 0;
 
-$pdf = new PDF('P', 'in', array($page_width, $page_height));
+// Size of an A4 page
+$max_page_width_mm = 210; // millimeters
+$max_page_height_mm = 297; // millimeters
+
+// Calculate the upper limits of the size of all images 
+$max_img_width_px = 0;
+$max_img_height_px = 0;
+foreach ($page_details as $p) {
+	$filename = $config['paths']['cache_image'].'/'.$p['FileNamePrefix'].'.jpg';
+	$imagesize = getimagesize($filename);
+	if ($imagesize[0] > $max_img_width_px) { $max_img_width_px = (int)($imagesize[0] * $config['resize_factor']); }
+	if ($imagesize[1] > $max_img_height_px) { $max_img_height_px = (int)($imagesize[1] * $config['resize_factor']); }
+}
+
+// Decide if we need to fix the height or the width
+$image_aspect_ratio = $max_img_height_px / $max_img_width_px;
+$page_aspect_ratio = $max_page_height_mm / $max_page_width_mm;
+
+// Do we fit to the height or the width?
+if ($image_aspect_ratio > $page_aspect_ratio) {
+	// Image is narrower than an A4 page, fit to the height
+	$dpm = $max_img_height_px / $max_page_height_mm;
+} else {
+	// Image is wider than an A4 page, fit to the width
+	$dpm = $max_img_width_px / $max_page_width_mm;
+}
+// Convert to millimeters
+$page_width_mm = $max_img_width_px / $dpm; 
+$page_height_mm = $max_img_height_px / $dpm;
+
+// ------------------------------
+// Generate the PDF
+// ------------------------------
+$pdf = new PDF('P', 'mm', array($page_width_mm, $page_height_mm));
 $pdf->SetAutoPageBreak(false);
 $pdf->SetMargins(0, 0);
 
@@ -75,6 +114,15 @@ foreach ($page_details as $p) {
 		$filename = $config['paths']['cache_resize'].'/'.$p['FileNamePrefix'].'.jpg';
 	}
 
+	// Greyscale the image
+	if ($config['desaturate'] == true) {
+		$cmd = "convert -colorspace Gray -separate -average "
+		       ."'".$config['paths']['cache_image'].'/'.$p['FileNamePrefix'].'.jpg'."' "
+					 ."'".$config['paths']['cache_resize'].'/'.$p['FileNamePrefix'].'.jpg'."'";
+		`$cmd`;
+		$filename = $config['paths']['cache_resize'].'/'.$p['FileNamePrefix'].'.jpg';
+	}
+
 	$imagesize = getimagesize($filename);
 	$img_width = $imagesize[0];
 	$img_height = $imagesize[1];
@@ -84,43 +132,20 @@ foreach ($page_details as $p) {
 	$pdf->SetFont('Helvetica', '', 14);
 	$pdf->SetTextColor(0, 0, 0);
 
-	// Determine if we max out height or width to fit it in the page
-	if ($img_aspect_ratio < $page_aspect_ratio) {
-		// Image is narrower than the page, max out the height and center it horizontally
-		$dpi = $img_height / $page_height;
+	// Calculate the white space needed on the left and right
+	$h_space = ($max_page_width_mm - ($img_width / $dpm)) / 2; 
+	$v_space = ($max_page_height_mm - ($img_height / $dpm)) / 2; 
+	// Get the lines, Add the text to the page
+	$lines = $djvu->GetPageLines($p['FileNamePrefix'], $config['resize_factor'], $dpm);
+	foreach ($lines as $l) {
+		$pdf->setXY($l['x'], $l['y']);
+		$pdf->Cell($l['w'], $l['h'], $l['text'], 0, 0, 'FJ'); // FJ = force full justifcation
+	}
 
-		// Calculate the white space needed on the left and right
-		$h_space = ($page_width - ($img_width / $dpi)) / 2; 
-		
-		// Get the lines, Add the text to the page
-		$lines = $djvu->GetPageLines($p['FileNamePrefix'], $config['resize_factor'], $dpi);
-		foreach ($lines as $l) {
- 			$pdf->setXY($l['x'] + $h_space, $l['y']);
-			$pdf->Cell($l['w'], $l['h'], $l['text'], 0, 0, 'FJ'); // FJ = force full justifcation
-		}
-
-		$pdf->Image($filename, $h_space, 0, null, $page_height);
-
-	} else {
-    // Image is taller than the page, max out the width and center it vertically
-		$dpi = $img_width / $page_width;
-
-		// Calculate the white space needed on the top and bottom
-		$v_space = ($page_height - ($img_height / $dpi)) / 2; 
-
-		// Get the lines, Add the text to the page
-		$lines = $djvu->GetPageLines($p['FileNamePrefix'], $config['resize_factor'], $dpi);
-		foreach ($lines as $l) {
-			$pdf->setXY($l['x'], $l['y'] + $v_space);
-			$pdf->Cell($l['w'], $l['h'], $l['text'], 0, 0, 'FJ'); // FJ = force full justifcation
-		}
-
-		$pdf->Image($filename, 0, $v_space, $page_width, null);
-	} // if aspect ratio
-	
+	$pdf->Image($filename, 0, 0, ($dpm * -25.4));
 } // foreach pages
 
-$pdf->SetCompression(true);
+$pdf->SetCompression(false);
 $pdf->SetDisplayMode('fullpage','two');
 
 // Set the title metadata
