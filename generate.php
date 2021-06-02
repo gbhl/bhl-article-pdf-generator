@@ -151,17 +151,17 @@ $pdf->SetDisplayMode('fullpage','two');
 // Set the title metadata
 $title = $part['Genre'].': "'.$part['Title'].'"'
          .' From '.$part['ContainerTitle']
-				 .($part['Volume'] ? ' Volume '.$part['Volume'] : '')
-				 .($part['Issue'] ? ', Issue '.$part['Issue'] : '')
-				 .($part['Date'] ? ' ('.$part['Date'].')' : '')
-				 .($part['PageRange'] ? ', '.$part['PageRange'].'' : '')
+				 .(isset($part['Volume']) ? ' Volume '.$part['Volume'] : '')
+				 .(isset($part['Issue']) ? ', Issue '.$part['Issue'] : '')
+				 .(isset($part['Date']) ? ' ('.$part['Date'].')' : '')
+				 .(isset($part['PageRange']) ? ', '.$part['PageRange'].'' : '')
 				 .'.';
 $pdf->SetTitle($title);
 
 // Set the Author Metadata
 $temp = [];
 foreach ($part['Authors'] as $a) {
-	$temp[] = $a['Name'].($a['Dates'] ? ' '.$a['Dates'] : '');
+	$temp[] = $a['Name'].(isset($a['Dates']) ? ' ('.$a['Dates'].')' : '');
 }
 $pdf->SetAuthor(implode('; ', $temp));
 
