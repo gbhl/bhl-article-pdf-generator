@@ -68,14 +68,23 @@ function get_pdf($identifier, $override = false) {
 */
 function get_djvu($identifier, $override = false) {
 	global $config;
-
+  
+	$letter = substr($identifier,0,1);
 	$filename = $identifier.'_djvu.xml';
-	$path = $config['paths']['cache_djvu'].'/'.$filename;
-	if (!file_exists($path) || $override) {
-		$url = 'https://archive.org/download/'.$identifier.'/'.$filename;
-		file_put_contents($path, file_get_contents($url));
+	$cache_path = $config['paths']['cache_djvu'].'/'.$filename;
+	if (!file_exists($cache_path) || $override) {
+		$djvu = $config['isilon_root']."/{$letter}/{$identifier}/{$identifier}_djvu.xml";
+		// Do we have the file locally?
+		if (file_exists($djvu)) {
+			// Do we have it on the Isilon?
+			copy($djvu, $cache_path);
+		} else {
+			// Get it from the internet archive
+			$url = 'https://archive.org/download/'.$identifier.'/'.$filename;
+			file_put_contents($cache_path, file_get_contents($url));			
+		}
 	}
-	return $path;
+	return $cache_path;
 }
 
 /*
@@ -83,18 +92,55 @@ function get_djvu($identifier, $override = false) {
  	Given an array of Page IDs, download the images from IA
 	(future versions of this will grab the image from our TAR file)
 */
-function get_page_images($pages, $override = false) {
+function get_page_images($pages, $identifier, $override = false) {
 	global $config;
 
-	foreach ($pages as $p) {
-		$path = $config['paths']['cache_image'].'/'.$p['FileNamePrefix'].'.jpg';
-		if (!file_exists($path) || $override) {
-			$url = 'https://archive.org'.$p['ExternalURL'];
-			print "Downloading page $url...\n";
-			file_put_contents($path, file_get_contents($url));
+	$letter = substr($identifier,0,1);
+	$jp2_zip = $config['isilon_root']."/{$letter}/{$identifier}/{$identifier}_jp2.zip";
+	// Do we have a path and JP2s in the Isilon?
+	if (file_exists($jp2_zip)) {
+		// Get the list of filenames
+		$zip = new ZipArchive;
+		if (!$zip->open($jp2_zip)) {
+			echo 'Failed to open Zipfile: '.$jp2_zip."\n";
+			return false;
+		} else {
+			$c = 1;
+			$total = count($pages);
+			foreach ($pages as $p) {
+				print chr(13)."Getting/converting images from the Isilon (".$c++." of $total)...";
+				$f_jp2 = $p['FileNamePrefix'].'.jp2';
+				$f_jpg = $p['FileNamePrefix'].'.jpg';
+				$fp = $identifier.'_jp2/'.$f_jp2;
+				if (!file_exists($config['paths']['cache_image'].'/'.$f_jpg)) {
+					// Extract them from the ZIP file
+					if (!$zip->extractTo($config['paths']['cache_image'], $fp)) {
+						echo 'failed to extract file '.$fp."\n";
+					} else {
+						// Convert to JPEG and move to the cache folder
+						$im = new Imagick ();
+						$im->readImage($config['paths']['cache_image'].'/'.$fp);
+						$im->writeImage($config['paths']['cache_image'].'/'.$f_jpg);
+					}
+				}
+			}
+			print "\n";
+			$zip->close();
+		}
+
+	} else {
+		print "Getting images from the Internet Archive...\n";
+		// No, fall back to getting it from online
+		foreach ($pages as $p) {
+			$path = $config['paths']['cache_image'].'/'.$p['FileNamePrefix'].'.jpg';
+			if (!file_exists($path) || $override) {
+				$url = 'https://archive.org'.$p['ExternalURL'];
+				print "Downloading page $url...\n";
+				file_put_contents($path, file_get_contents($url));
+			}
 		}
 	}
-	
+	return true;
 }
 
 /* 
@@ -333,7 +379,7 @@ function pdf_add_xmp($part, $pdf) {
 		$metadata[] = "-XMP:Date=".escapeshellarg($part['Date']);
 	}
 
-	$cmd = 'exiftool '.implode(' ', $metadata).' '.$pdf;
+	$cmd = 'exiftool -overwrite_original '.implode(' ', $metadata).' '.$pdf;
 	`$cmd`;
 }	
 
