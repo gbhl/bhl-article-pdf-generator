@@ -312,7 +312,7 @@ function pdf_add_xmp($part, $pdf) {
 	
 	// Authors
 	foreach ($part['Authors'] as $a) {
-		$name = "{$a['Name']} ({$a['Dates']})";
+		$name = $a['Name'].' '.(isset($a['Dates']) ? ' ('.$a['Dates'].')' : '');
 		$metadata[] = "-XMP:Creator+=".escapeshellarg($name);
 	}
 	
@@ -366,7 +366,7 @@ function pdf_add_xmp($part, $pdf) {
 						$metadata[] = "-XMP:ISSN=".escapeshellarg($i['IdentifierValue']);
 					}
 					if ($i['IdentifierName'] == 'BioStor') {
-						$metadata[] = "-XMP:BioStor=".escapeshellarg($i['IdentifierValue']);
+						$metadata[] = "-XMP-dc:Identifier=".escapeshellarg('BioStor:'.$i['IdentifierValue']);
 					}
 				}				
 			}
