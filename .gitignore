@@ -2,3 +2,4 @@ cache
 config.php
 tmp
 output
+.DS_Store
