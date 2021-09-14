@@ -20,10 +20,11 @@ require_once('lib/force_justify.php');
 
 // Sanity checks
 $id = validate_input($argv);
-$letter = substr(''.$id, 0,1);
+$L1 = substr(''.$id, 0, 1);
+$L2 = substr(''.$id, 1, 1);
 
 // Set our filename
-$output_filename = $config['paths']['output'].'/'.$letter.'/bhl-segment-'.$id.($config['desaturate'] ? '-grey' : '').'.pdf';
+$output_filename = $config['paths']['output'].'/'.$L1.'/'.$L2.'/bhl-segment-'.$id.($config['desaturate'] ? '-grey' : '').'.pdf';
 if (file_exists($output_filename)) {
 	print "File exists: $output_filename\n";
 	exit;
