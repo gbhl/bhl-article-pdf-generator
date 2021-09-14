@@ -7,6 +7,7 @@
 	******************************************** 
 */
 
+ini_set('memory_limit','1024M');
 # does the config file exist?
 if (!file_exists('config.php')) {
 	die('config.php file not found.'."\n");
@@ -19,11 +20,26 @@ require_once('lib/force_justify.php');
 
 // Sanity checks
 $id = validate_input($argv);
+$letter = substr(''.$id, 0,1);
+
+// Set our filename
+$output_filename = $config['paths']['output'].'/'.$letter.'/bhl-segment-'.$id.($config['desaturate'] ? '-grey' : '').'.pdf';
+if (file_exists($output_filename)) {
+	print "File exists: $output_filename\n";
+	exit;
+}
+
 
 print "Getting metadata for Segment ID $id...\n";
 // Get the basic segment info
 $part = get_bhl_segment($id);
 $part = $part['Result'][0]; // deference this fo ease of use
+
+if (!isset($part['ItemID'])) {
+	print "Segment ID $id not found\n";
+	exit;                    
+}
+
 
 // Turn that into a list of pages, because we need the prefix (maybe)
 $pages = [];
@@ -51,9 +67,6 @@ if (!$ret) {
 
 // Get the DJVU fata
 $djvu = new PhpDjvu($djvu_path);
-
-// Set out filename
-$output_filename = 	$config['paths']['output'].'/bhl-segment-'.$id.($config['desaturate'] ? '-grey' : '').'.pdf';
 
 // ------------------------------
 // Calculate the size of our page
@@ -99,8 +112,9 @@ $pdf->SetAutoPageBreak(false);
 $pdf->SetMargins(0, 0);
 
 $params = [];
-print "Adding pages...\n";
+$c = 0;
 foreach ($page_details as $p) {
+	print chr(13)."Adding pages...($c)"; 
 	$filename = $config['paths']['cache_image'].'/'.$p['FileNamePrefix'].'.jpg';
   
 	// Resize the image
@@ -143,8 +157,9 @@ foreach ($page_details as $p) {
 	}
 
 	$pdf->Image($filename, 0, 0, ($dpm * -25.4));
+	$c++;
 } // foreach pages
-
+print "\n";
 $pdf->SetCompression(false);
 $pdf->SetDisplayMode('fullpage','two');
 

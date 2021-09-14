@@ -1,5 +1,6 @@
 <?php
 $bhl_dbh = null;
+include ('Archive/Tar.php');
 
 /* ********************************************
 	Libraries for generating article PDFs for BHL 
@@ -97,6 +98,7 @@ function get_page_images($pages, $identifier, $override = false) {
 
 	$letter = substr($identifier,0,1);
 	$jp2_zip = $config['local_source_path']."/{$letter}/{$identifier}/{$identifier}_jp2.zip";
+	$jp2_tar = $config['local_source_path']."/{$letter}/{$identifier}/{$identifier}_jp2.tar";
 	// Do we have a path and JP2s in the Isilon?
 	if (file_exists($jp2_zip)) {
 		// Get the list of filenames
@@ -126,6 +128,35 @@ function get_page_images($pages, $identifier, $override = false) {
 			}
 			print "\n";
 			$zip->close();
+		}
+	} elseif (file_exists($jp2_tar)) {
+		
+		$tar = new Archive_Tar($jp2_tar);
+		if (!$tar) {
+			echo 'Failed to open Tarfile: '.$jp2_tar."\n";
+			return false;
+		} else {
+			$c = 1;
+			$total = count($pages);
+			foreach ($pages as $p) {
+				print chr(13)."Getting/converting images from the Isilon (".$c++." of $total)...";
+				$f_jp2 = $p['FileNamePrefix'].'.jp2';
+				$f_jpg = $p['FileNamePrefix'].'.jpg';
+				$fp = $identifier.'_jp2/'.$f_jp2;
+				if (!file_exists($config['paths']['cache_image'].'/'.$f_jpg)) {
+					// Extract them from the ZIP file
+					if (!$tar->extractList(array($fp), $config['paths']['cache_image'], $identifier.'_jp2/')) {
+						echo 'failed to extract file '.$fp."\n";
+					} else {
+						// Convert to JPEG and move to the cache folder
+						$im = new Imagick ();
+						$im->readImage($config['paths']['cache_image'].'/'.$f_jp2);
+						$im->writeImage($config['paths']['cache_image'].'/'.$f_jpg);
+					}
+				}
+			}
+			print "\n";
+			unset($tar);
 		}
 
 	} else {
@@ -303,7 +334,7 @@ function pdf_add_xmp($part, $pdf) {
 	$metadata = [];
 
 	// $metadata[] = "-XMP:URL=".escapeshellarg($part['PartUrl']);	
-	if ($part['Doi']) {
+	if (isset($part['Doi'])) {
 		$metadata[] = "-XMP:DOI=".escapeshellarg($part['Doi']);
 	}
 
@@ -379,7 +410,7 @@ function pdf_add_xmp($part, $pdf) {
 		$metadata[] = "-XMP:Date=".escapeshellarg($part['Date']);
 	}
 
-	$cmd = 'exiftool -overwrite_original '.implode(' ', $metadata).' '.$pdf;
+	$cmd = '/usr/local/bin/exiftool -overwrite_original '.implode(' ', $metadata).' '.$pdf;
 	`$cmd`;
 }	
 
