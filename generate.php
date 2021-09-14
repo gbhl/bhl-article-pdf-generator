@@ -19,13 +19,16 @@ require_once('lib/fpdf182/fpdf.php');
 require_once('lib/force_justify.php');
 
 // Sanity checks
-$id = validate_input($argv);
+$ret = validate_input($argv);
+$id = $ret[0];
+$force = $ret[1];
+
 $L1 = substr(''.$id, 0, 1);
 $L2 = substr(''.$id, 1, 1);
 
 // Set our filename
 $output_filename = $config['paths']['output'].'/'.$L1.'/'.$L2.'/bhl-segment-'.$id.($config['desaturate'] ? '-grey' : '').'.pdf';
-if (file_exists($output_filename)) {
+if (file_exists($output_filename) && !$force) {
 	print "File exists: $output_filename\n";
 	exit;
 }

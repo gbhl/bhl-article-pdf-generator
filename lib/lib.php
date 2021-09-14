@@ -303,6 +303,7 @@ function validate_input($argv) {
 
 	# did we get an ID number on the URL?
 	$id = null;
+	$force = false;
 	if (!isset($argv[1])) {
 		die('ID is required.'."\n");
 	}
@@ -313,8 +314,12 @@ function validate_input($argv) {
 	} else {
 		die('ID must be numeric.'."\n");
 	}
-
-	return $id;
+	if (isset($argv[2])) {
+		if ($argv[2] == '--force' || $argv[2] == '-f') {
+			$force = true;
+		}
+	}
+	return [$id, $force];
 }
 
 /**
