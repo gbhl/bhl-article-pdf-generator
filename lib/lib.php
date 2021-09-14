@@ -110,7 +110,7 @@ function get_page_images($pages, $identifier, $override = false) {
 			$c = 1;
 			$total = count($pages);
 			foreach ($pages as $p) {
-				print chr(13)."Getting/converting images from the Isilon (".$c++." of $total)...";
+				print chr(13)."Converting images from the Isilon (".$c++." of $total, ZIP)...";
 				$f_jp2 = $p['FileNamePrefix'].'.jp2';
 				$f_jpg = $p['FileNamePrefix'].'.jpg';
 				$fp = $identifier.'_jp2/'.$f_jp2;
@@ -130,7 +130,6 @@ function get_page_images($pages, $identifier, $override = false) {
 			$zip->close();
 		}
 	} elseif (file_exists($jp2_tar)) {
-		
 		$tar = new Archive_Tar($jp2_tar);
 		if (!$tar) {
 			echo 'Failed to open Tarfile: '.$jp2_tar."\n";
@@ -158,7 +157,6 @@ function get_page_images($pages, $identifier, $override = false) {
 			print "\n";
 			unset($tar);
 		}
-
 	} else {
 		print "Getting images from the Internet Archive...\n";
 		// No, fall back to getting it from online
@@ -319,7 +317,6 @@ function validate_input($argv) {
 	return $id;
 }
 
-//----------------------------------------------------------------------------------------
 /**
  * @brief Inject XMP metadata into PDF
  *
