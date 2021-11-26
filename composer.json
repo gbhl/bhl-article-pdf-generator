@@ -1,0 +1,8 @@
+{
+    "require": {
+        "php-amqplib/php-amqplib": ">=3.0",
+        "arhitector/php-djvu": "dev-master",
+        "fpdf/fpdf": "dev-master"
+    },
+		"minimum-stability": "dev"
+}

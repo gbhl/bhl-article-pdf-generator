@@ -250,15 +250,11 @@ function get_bhl_item($id, $override = false) {
 */
 function get_bhl_pages($pages = array()) {
 	global $bhl_dbh;
+	global $config;
 	
 	if (!$bhl_dbh) {
 		try {
-			$bhl_dbh = new PDO(
-				'sqlsrv:server=tcp:sil-cl01-bhl.us.sinet.si.edu,1433;Database=BHL',
-				'BHLReadOnly',
-				'BHLR3ad0n!y', 
-				array('PDO::ATTR_ERRMODE' => PDO::ERRMODE_EXCEPTION)
-			);
+			$bhl_dbh = new PDO($config['db']['dsn'], $config['db']['username'], $config['db']['password']);
 		} catch (Exception $e) {
 			echo "Failed to get DB handle: ".$e->getMessage()."\n";
 			exit;

@@ -61,4 +61,20 @@ $config['resize_factor'] = 1; // Expressed as a percent 0.50 = 50%.
 // ---------------------------------------------
 $config['desaturate'] = false;
 
+// ---------------------------------------------
+// MESSAGE QUEUE SERVER - Where do we look for PDFs that need updating?
+// VALUES - A hostname, port, username (optional), password (optional)
+// ---------------------------------------------
+$config['mq']['hostname'] = 'RABBITMQ.SERVER.COM';
+$config['mq']['port'] = '5672';
+$config['mq']['username'] = '';
+$config['mq']['password'] = '';
+
+// ---------------------------------------------
+// DATABASE CONNECTON - Where do we look for PDFs that need updating?
+// VALUES - A DSN, username, password
+// ---------------------------------------------
+$config['db']['dsn'] = 'dblib:host=SQL.SERVER.COM:1433;dbname=DATABASE';
+$config['db']['username'] = 'USERNAME';
+$config['db']['password'] = 'PASSWORD';
 

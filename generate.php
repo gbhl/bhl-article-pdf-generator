@@ -28,6 +28,9 @@ $L2 = substr(''.$id, 1, 1);
 
 // Set our filename
 $output_filename = $config['paths']['output'].'/'.$L1.'/'.$L2.'/bhl-segment-'.$id.($config['desaturate'] ? '-grey' : '').'.pdf';
+if (!file_exists($config['paths']['output'].'/'.$L1.'/'.$L2)) {
+	mkdir($config['paths']['output'].'/'.$L1.'/'.$L2, 0755, true);
+}
 if (file_exists($output_filename) && !$force) {
 	print "File exists: $output_filename\n";
 	exit;
@@ -57,6 +60,8 @@ $item = $item['Result'][0]; // deference this fo ease of use
 
 // Get the pages from BHL because maybe I need the file name prefix
 $page_details = get_bhl_pages($pages, $item['SourceIdentifier']);
+// print_r($page_details);
+// die;
 
 // Get our PDF
 print "Getting DJVU...\n";
@@ -117,7 +122,9 @@ $pdf->SetMargins(0, 0);
 
 $params = [];
 $c = 0;
-foreach ($page_details as $p) {
+foreach ($pages as $pg) {
+	$p = $page_details['pageid-'.$pg];
+
 	print chr(13)."Adding pages...($c)"; 
 	$filename = $config['paths']['cache_image'].'/'.$p['FileNamePrefix'].'.jpg';
   
