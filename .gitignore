@@ -1,8 +1,5 @@
 cache
-config.php
-tmp
+config/config.json
 output
 .DS_Store
-part-ids.txt
-part-ids-small.txt
 vendor

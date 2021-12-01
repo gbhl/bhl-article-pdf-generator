@@ -133,6 +133,7 @@ class MakePDF {
 				$cmd = "convert -resize ".$factor."% "
 							."'".$this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg'."' "
 							."'".$this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg'."'";
+				`$cmd`;
 				$filename = $this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg';
 			}
 

@@ -8,42 +8,40 @@ use PDODb;
 use Noodlehaus\Config;
 use Noodlehaus\Parser\Json;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
-
 use BHL\PDFGenerator\MakePDF;
 
 $config = new Config('config/config.json');
 $pdfgen = new MakePDF($config);
-$pdfgen->generate_article_pdf(184719);
-
-die;
-
 
 print "Connecting...\n";
 $connection = new AMQPStreamConnection(
-	$config['mq']['hostname'], $config['mq']['port'], 
-	$config['mq']['username'], $config['mq']['password']
+	$config->get('mq.hostname'), 
+	$config->get('mq.port'),
+	$config->get('mq.username'),
+	$config->get('mq.password')
 );
 $channel = $connection->channel();
-print "Declaring Queue...\n";
-
-$channel->queue_declare($config['mq']['queue_name'], true, true, false, true);
+print "Declaring Queue {$config->get('mq.queue_name')}...\n";
+$channel->queue_declare($config->get('mq.queue_name'), true, true, false, true);
 $channel->basic_qos(null, 1, null);
-$channel->basic_consume($config['mq']['queue_name'], '', false, false, false, false, 'process_messsage');
- 
+
+$process_messsage = function($msg){
+	global $pdfgen;
+	
+	$message = explode('|', trim($msg->body));
+	$id = $message[2];
+	print "Processing segment $id...\n";
+	$pdfgen->generate_article_pdf($id);
+	$msg->ack();
+};
+
+$channel->basic_consume($config->get('mq.queue_name'), '', false, false, false, false, $process_messsage);
+
 while (count($channel->callbacks)) {
-    $channel->wait();
+	print "waiting...";
+	$channel->wait();
 }
 register_shutdown_function('shutdown', $channel, $connection);
-
-function process_messsage($msg){
-		$message = explode('|', trim($msg->body));
-		print "Processing segment {$message[2]}...\n";
-		// print_r($message);
-		$cmd = "php generate.php {$message[2]} --force";
-		system($cmd);
-		$msg->ack();
-		die;
-}
 
 function shutdown($channel, $connection) {
 	$channel->close();
