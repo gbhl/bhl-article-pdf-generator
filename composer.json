@@ -11,9 +11,7 @@
         "fpdf/fpdf": "dev-master",
 				"bhl/pdfgenerator": ">=1.0.0",
 				"pear/archive_tar": "1.4.x-dev",
-				"hassankhan/config": "dev-develop",
-				"ext-pdo_dblib": "*",
-				"tommyknocker/pdo-database-class": "dev-master"
+				"hassankhan/config": "dev-develop"
 		},
 		"minimum-stability": "dev"
 }
