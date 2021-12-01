@@ -60,8 +60,6 @@ class MakePDF {
 
 		// Get the pages from BHL because maybe I need the file name prefix
 		$page_details = $this->get_bhl_pages($pages, $item['SourceIdentifier']);
-		// print_r($page_details);
-		// die;
 
 		// Get our PDF
 		print "Getting DJVU...\n";
@@ -135,16 +133,6 @@ class MakePDF {
 				$cmd = "convert -resize ".$factor."% "
 							."'".$this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg'."' "
 							."'".$this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg'."'";
-				`$cmd`;
-				$filename = $this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg';
-			}
-
-			// Greyscale the image
-			if ($this->config->get('image.desaturate') == true) {
-				$cmd = "convert -colorspace Gray -separate -average "
-							."'".$this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg'."' "
-							."'".$this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg'."'";
-				`$cmd`;
 				$filename = $this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg';
 			}
 

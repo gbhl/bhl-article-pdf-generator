@@ -18,7 +18,6 @@ $pdfgen->generate_article_pdf(184719);
 die;
 
 
-
 print "Connecting...\n";
 $connection = new AMQPStreamConnection(
 	$config['mq']['hostname'], $config['mq']['port'], 

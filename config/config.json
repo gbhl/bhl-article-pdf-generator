@@ -16,7 +16,7 @@
 		"paths": {
 			"pdf": "./cache/pdf",
 			"image": "./cache/image",
-			"resize": "./cache/image",
+			"resize": "./cache/resize",
 			"json": "./cache/json",
 			"djvu": "./cache/djvu"
 		}
@@ -27,8 +27,7 @@
 		"local_source": "/Volumes/isilon/biodiversity"
 	},
 	"image": {
-		"resize": "0.50",
-		"desaturate": false
+		"resize": "0.50"
 	},
 	"mq": {
 		"hostname": "sil-solr-bhl.si.edu",
