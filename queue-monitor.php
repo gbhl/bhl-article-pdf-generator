@@ -13,7 +13,6 @@ use BHL\PDFGenerator\MakePDF;
 $config = new Config('config/config.json');
 $pdfgen = new MakePDF($config);
 
-print "Connecting...\n";
 $connection = new AMQPStreamConnection(
 	$config->get('mq.hostname'), 
 	$config->get('mq.port'),
@@ -21,7 +20,6 @@ $connection = new AMQPStreamConnection(
 	$config->get('mq.password')
 );
 $channel = $connection->channel();
-print "Declaring Queue {$config->get('mq.queue_name')}...\n";
 $channel->queue_declare($config->get('mq.queue_name'), true, true, false, true);
 $channel->basic_qos(null, 1, null);
 
@@ -38,7 +36,6 @@ $process_messsage = function($msg){
 $channel->basic_consume($config->get('mq.queue_name'), '', false, false, false, false, $process_messsage);
 
 while (count($channel->callbacks)) {
-	print "waiting...";
 	$channel->wait();
 }
 register_shutdown_function('shutdown', $channel, $connection);
