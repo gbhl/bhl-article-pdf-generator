@@ -249,7 +249,7 @@ class MakePDF {
 		// Do we have a path and JP2s in the Isilon?
 		if (file_exists($jp2_zip)) {
 			// Get the list of filenames
-			$zip = new ZipArchive;
+			$zip = new \ZipArchive;
 			if (!$zip->open($jp2_zip)) {
 				echo 'Failed to open Zipfile: '.$jp2_zip."\n";
 				return false;
@@ -267,7 +267,7 @@ class MakePDF {
 							echo 'failed to extract file '.$fp."\n";
 						} else {
 							// Convert to JPEG and move to the cache folder
-							$im = new Imagick ();
+							$im = new \Imagick ();
 							$im->readImage($this->config->get('cache.paths.image').'/'.$fp);
 							$im->writeImage($this->config->get('cache.paths.image').'/'.$f_jpg);
 						}
@@ -277,7 +277,7 @@ class MakePDF {
 				$zip->close();
 			}
 		} elseif (file_exists($jp2_tar)) {
-			$tar = new Archive_Tar($jp2_tar);
+			$tar = new \Archive_Tar($jp2_tar);
 			if (!$tar) {
 				echo 'Failed to open Tarfile: '.$jp2_tar."\n";
 				return false;
@@ -295,7 +295,7 @@ class MakePDF {
 							echo 'failed to extract file '.$fp."\n";
 						} else {
 							// Convert to JPEG and move to the cache folder
-							$im = new Imagick ();
+							$im = new \Imagick ();
 							$im->readImage($this->config->get('cache.paths.image').'/'.$f_jp2);
 							$im->writeImage($this->config->get('cache.paths.image').'/'.$f_jpg);
 						}
@@ -397,7 +397,7 @@ class MakePDF {
 		
 		if (!$this->bhl_dbh) {
 			try {
-				$this->bhl_dbh = new PDODb($this->config->get('bhl.db'));
+				$this->bhl_dbh = new \PDO($this->config->get('bhl.db.dsn'), $this->config->get('bhl.db.username'), $this->config->get('bhl.db.password'));
 			} catch (Exception $e) {
 				echo "Failed to get DB handle: ".$e->getMessage()."\n";
 				exit;
@@ -407,13 +407,11 @@ class MakePDF {
 		if (count($pages) > 0) {
 			$placeholders = str_repeat('?, ', count($pages)-1).'?';
 
-			$pages = $this->bhl_dbh->rawQuery(
-				'SELECT * FROM Page WHERE PageID IN ('.$placeholders.')', 
-				$pages
-			);
+			$stmt = $this->bhl_dbh->prepare('SELECT * FROM Page WHERE PageID IN ('.$placeholders.')');
+			$stmt->execute($pages);
 			$rows = [];
-			foreach ($pages as $p) {
-				$rows['pageid-'.$p['PageID']] = $p;
+			while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+				$rows['pageid-'.$row['PageID']] = $row;
 			}
 			return $rows;
 		}
@@ -421,17 +419,18 @@ class MakePDF {
 
 	private function get_bhl_rights_holder($item_id) {
 		
-		$name = $this->bhl_dbh->rawQuery(
+		$stmt = $this->bhl_dbh->prepare(
 			'SELECT i.InstitutionName
 			FROM ItemInstitution ii 
 			INNER JOIN Book b ON b.ItemID = ii.ItemID
 			INNER JOIN Institution i ON ii.InstitutionCode = i.InstitutionCode
 			WHERE b.BookID = ?
-			AND ii.InstitutionRoleID = 2', // 2 = Rights Holder
-			[$item_id]
+			AND ii.InstitutionRoleID = 2' // 2 = Rights Holder
 		);
-		if (count($name) > 0) {
-			return $name[0]['InstitutionName'];
+		$stmt->execute(array($item_id));
+		$row = null;
+		if ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+			return $row['InstitutionName'];
 		}
 		return null;
 	}
