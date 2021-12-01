@@ -1,5 +1,5 @@
 cache
-config/config.json
+config.json
 output
 .DS_Store
 vendor
