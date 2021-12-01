@@ -1,15 +1,23 @@
 <?php
+namespace QueueWatcher;
 require_once __DIR__ . '/vendor/autoload.php';
-// define('AMQP_DEBUG', true);
+require_once './packages/bhl/pdfgenerator/src/PDFGenerator.php';
+require_once './packages/bhl/pdfgenerator/src/ForceJustify.php';
 
-# does the config file exist?
-if (!file_exists('config.php')) {
-	die('config.php file not found.'."\n");
-}
-require_once('config.php');
-ini_set('memory_limit','1024M');
-
+use PDODb;
+use Noodlehaus\Config;
+use Noodlehaus\Parser\Json;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
+
+use BHL\PDFGenerator\MakePDF;
+
+$config = new Config('config/config.json');
+$pdfgen = new MakePDF($config);
+$pdfgen->generate_article_pdf(184719);
+
+die;
+
+
 
 print "Connecting...\n";
 $connection = new AMQPStreamConnection(
@@ -20,8 +28,6 @@ $channel = $connection->channel();
 print "Declaring Queue...\n";
 
 $channel->queue_declare($config['mq']['queue_name'], true, true, false, true);
-echo ' * Waiting for messages. To exit press CTRL+C', "\n";
-
 $channel->basic_qos(null, 1, null);
 $channel->basic_consume($config['mq']['queue_name'], '', false, false, false, false, 'process_messsage');
  
@@ -30,17 +36,13 @@ while (count($channel->callbacks)) {
 }
 register_shutdown_function('shutdown', $channel, $connection);
 
-
 function process_messsage($msg){
-		print_r($msg->body);
-		$message = explode('|', $msg->body);
-		print_r($message);
+		$message = explode('|', trim($msg->body));
+		print "Processing segment {$message[2]}...\n";
+		// print_r($message);
 		$cmd = "php generate.php {$message[2]} --force";
-		print $cmd."\n";
-		`echo '$cmd' >> commands.sh`; 
-		// exec($cmd);
-
-		$msg->delivery_info['channel']->basic_ack($msg->delivery_info['delivery_tag']);
+		system($cmd);
+		$msg->ack();
 		die;
 }
 

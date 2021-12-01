@@ -1,0 +1,11 @@
+{
+	"name": "bhl/pdfgenerator",
+	"type": "library",
+	"description": "Generate a PDF file from a BHL Segment",
+	"autoload": {
+		"psr-0": {
+			"BHL\\PDFGenerator\\": "src/"
+		}
+	},
+	"version": "1.0.0"
+}

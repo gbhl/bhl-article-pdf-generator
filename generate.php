@@ -36,6 +36,8 @@ if (file_exists($output_filename) && !$force) {
 	exit;
 }
 
+print "Pruning cache...\n";
+clean_cache();
 
 print "Getting metadata for Segment ID $id...\n";
 // Get the basic segment info
@@ -207,4 +209,4 @@ $pdf->SetCreator($part['PartUrl']);
 
 // All done!
 $pdf->Output('F',$output_filename);
-pdf_add_xmp($part, $output_filename);
+pdf_add_xmp($part, $item, $output_filename);

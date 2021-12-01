@@ -1,8 +1,19 @@
 {
-    "require": {
+		"name": "bhl-us/pdfmaker",
+		"repositories": [
+			{
+				"type": "path",
+				"url": "packages/bhl/pdfgenerator"
+			}
+		],
+		"require": {
         "php-amqplib/php-amqplib": ">=3.0",
-        "arhitector/php-djvu": "dev-master",
-        "fpdf/fpdf": "dev-master"
-    },
+        "fpdf/fpdf": "dev-master",
+				"bhl/pdfgenerator": ">=1.0.0",
+				"pear/archive_tar": "1.4.x-dev",
+				"hassankhan/config": "dev-develop",
+				"ext-pdo_dblib": "*",
+				"tommyknocker/pdo-database-class": "dev-master"
+		},
 		"minimum-stability": "dev"
 }
