@@ -31,14 +31,9 @@ class MakePDF {
 		if (!file_exists($this->config->get('paths.output').'/'.$L1.'/'.$L2)) {
 			mkdir($this->config->get('paths.output').'/'.$L1.'/'.$L2, 0755, true);
 		}
-		if (file_exists($output_filename)) {
-			print "Replacing PDF: $output_filename\n";
-		}
 
-		print "Pruning cache...\n";
 		$this->clean_cache();
 
-		print "Getting metadata for Segment ID $id...\n";
 		// Get the basic segment info
 		$part = $this->get_bhl_segment($id);
 		$part = $part['Result'][0]; // deference this fo ease of use
@@ -53,7 +48,6 @@ class MakePDF {
 		foreach ($part['Pages'] as $p) {
 			$pages[] = $p['PageID'];
 		}
-		print "Getting metadata for Item ID {$part['ItemID']}...\n";
 		// Get the info for the part from BHL
 		$item = $this->get_bhl_item($part['ItemID']);
 		$item = $item['Result'][0]; // deference this fo ease of use
@@ -62,11 +56,9 @@ class MakePDF {
 		$page_details = $this->get_bhl_pages($pages, $item['SourceIdentifier']);
 
 		// Get our PDF
-		print "Getting DJVU...\n";
 		$djvu_path = $this->get_djvu($item['SourceIdentifier']);
 
 		// Get our Images
-		print "Getting Images...\n";
 		$ret = $this->get_page_images($page_details, $item['SourceIdentifier']);
 		if (!$ret) {
 			exit(1);
@@ -123,7 +115,6 @@ class MakePDF {
 		foreach ($pages as $pg) {
 			$p = $page_details['pageid-'.$pg];
 
-			print chr(13)."Adding pages...($c)"; 
 			$filename = $this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg';
 			
 			// Resize the image
@@ -159,7 +150,6 @@ class MakePDF {
 			$pdf->Image($filename, 0, 0, ($dpm * -25.4));
 			$c++;
 		} // foreach pages
-		print "\n";
 		$pdf->SetCompression(false);
 		$pdf->SetDisplayMode('fullpage','two');
 
@@ -257,7 +247,6 @@ class MakePDF {
 				$c = 1;
 				$total = count($pages);
 				foreach ($pages as $p) {
-					print chr(13)."Converting images from the Isilon (".$c++." of $total, ZIP)...";
 					$f_jp2 = $p['FileNamePrefix'].'.jp2';
 					$f_jpg = $p['FileNamePrefix'].'.jpg';
 					$fp = $identifier.'_jp2/'.$f_jp2;
@@ -273,7 +262,6 @@ class MakePDF {
 						}
 					}
 				}
-				print "\n";
 				$zip->close();
 			}
 		} elseif (file_exists($jp2_tar)) {
@@ -285,7 +273,6 @@ class MakePDF {
 				$c = 1;
 				$total = count($pages);
 				foreach ($pages as $p) {
-					print chr(13)."Getting/converting images from the Isilon (".$c++." of $total)...";
 					$f_jp2 = $p['FileNamePrefix'].'.jp2';
 					$f_jpg = $p['FileNamePrefix'].'.jpg';
 					$fp = $identifier.'_jp2/'.$f_jp2;
@@ -301,17 +288,14 @@ class MakePDF {
 						}
 					}
 				}
-				print "\n";
 				unset($tar);
 			}
 		} else {
-			print "Getting images from the Internet Archive...\n";
 			// No, fall back to getting it from online
 			foreach ($pages as $p) {
 				$path = $this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg';
 				if (!file_exists($path) || $override) {
 					$url = 'https://archive.org'.$p['ExternalURL'];
-					print "Downloading page $url...\n";
 					file_put_contents($path, file_get_contents($url));
 				}
 			}
