@@ -29,7 +29,6 @@ $process_messsage = function($msg){
 	
 	$message = explode('|', trim($msg->body));
 	$id = $message[2];
-	print "Processing segment $id...\n";
 	$pdfgen->generate_article_pdf($id);
 	$msg->ack();
 };

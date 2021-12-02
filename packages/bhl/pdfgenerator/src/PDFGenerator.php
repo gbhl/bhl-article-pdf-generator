@@ -3,6 +3,10 @@
 namespace BHL\PDFGenerator;
 
 use PDODb;
+use Monolog\Logger;
+use Monolog\Handler\StreamHandler;
+use Monolog\Formatter\LineFormatter;
+
 require_once(dirname(__FILE__) . '/../lib/djvu.php');
 
 /* ********************************************
@@ -17,13 +21,24 @@ class MakePDF {
 
 	private $bhl_dbh = null;
 	private $config;
+	private $log;
 
 	public function __construct($config) {
 		$this->config = $config;
 		$this->validate_config();
+
+		// create a log channel
+		$dateFormat = "Y-m-d H:i:s T";
+		$output = "[%datetime%] %level_name% %message% %context%\n";
+		$formatter = new LineFormatter($output, $dateFormat);
+		$stream = new StreamHandler($this->config->get('logging.filename'));
+		$stream->setFormatter($formatter);
+		$this->log = new Logger('makepdf');
+		$this->log->pushHandler($stream);
 	}
 	
 	function generate_article_pdf($id) {
+		$this->log->notice("Processing segment $id...", ['pid' => \posix_getppid()]);
 		// Set our filename
 		$L1 = substr((string)$id, 0, 1);
 		$L2 = substr((string)$id, 1, 1);
@@ -39,7 +54,6 @@ class MakePDF {
 		$part = $part['Result'][0]; // deference this fo ease of use
 
 		if (!isset($part['ItemID'])) {
-			print "Segment ID $id not found\n";
 			return false;                    
 		}
 
@@ -186,6 +200,7 @@ class MakePDF {
 		// All done!
 		$pdf->Output('F',$output_filename);
 		$this->pdf_add_xmp($part, $item, $output_filename);		
+		$this->log->notice("PDF for segment $id finished.", ['pid' => \posix_getppid()]);
 	}
 
 	/*
@@ -327,14 +342,14 @@ class MakePDF {
 			# did we actually get results?
 			if (count($object['Result']) == 0) {
 				unlink($path); # since we had an error, delete this from the cache.
-				die('Segment '.$id.' not found.'."\n");		
+				$this->log->error('Segment '.$id.' not found.', ['pid' => \posix_getppid()]);
 			} else {
 				# looks good, return the object
 				return $object;
 			}
 		} else {
 			unlink($path); # since we had an error, delete this from the cache.
-			die('Error getting segment metadata: '.$object['ErrorMessage']."\n");
+			$this->log->error('Error getting segment metadata: '.$object['ErrorMessage'], ['pid' => \posix_getppid()]);
 		}
 	}
 
