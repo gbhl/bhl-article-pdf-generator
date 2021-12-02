@@ -59,5 +59,8 @@
 		"username": "**USER**",
 		"password": "**PASS**",
 		"queue_name": "**Q-NAME**"
+	},
+	"logging": {
+		"filename": "./log/pdf-generator.log"
 	}
 }
