@@ -4,3 +4,4 @@ composer.lock
 output
 .DS_Store
 vendor
+log/*
