@@ -41,178 +41,178 @@ class MakePDF {
 	
 	function generate_article_pdf($id) {
 		try {
-		$this->log->notice("Processing segment $id...", ['pid' => \posix_getpid()]);
-		// Set our filename
-		$L1 = substr((string)$id, 0, 1);
-		$L2 = substr((string)$id, 1, 1);
-		$output_filename = $this->config->get('paths.output').'/'.$L1.'/'.$L2.'/bhl-segment-'.$id.($this->config->get('image.desaturate') ? '-grey' : '').'.pdf';
-		if (!file_exists($this->config->get('paths.output').'/'.$L1.'/'.$L2)) {
-			mkdir($this->config->get('paths.output').'/'.$L1.'/'.$L2, 0755, true);
-		}
+			$this->log->notice("Processing segment $id...", ['pid' => \posix_getpid()]);
+			// Set our filename
+			$L1 = substr((string)$id, 0, 1);
+			$L2 = substr((string)$id, 1, 1);
+			$output_filename = $this->config->get('paths.output').'/'.$L1.'/'.$L2.'/bhl-segment-'.$id.($this->config->get('image.desaturate') ? '-grey' : '').'.pdf';
+			if (!file_exists($this->config->get('paths.output').'/'.$L1.'/'.$L2)) {
+				mkdir($this->config->get('paths.output').'/'.$L1.'/'.$L2, 0755, true);
+			}
 
-		$this->clean_cache();
+			$this->clean_cache();
 
-		// Get the basic segment info
-		$part = $this->get_bhl_segment($id);
-		$part = $part['Result'][0]; // deference this fo ease of use
+			// Get the basic segment info
+			$part = $this->get_bhl_segment($id);
+			$part = $part['Result'][0]; // deference this fo ease of use
 
-		if (!isset($part['ItemID'])) {
-			return false;                    
-		}
+			if (!isset($part['ItemID'])) {
+				return false;                    
+			}
 
-		// Turn that into a list of pages, because we need the prefix (maybe)
-		$pages = [];
-		foreach ($part['Pages'] as $p) {
-			$pages[] = $p['PageID'];
-		}
-		// Get the info for the part from BHL
-		if ($this->verbose) { print "Getting ItemID {$part['ItemID']}\n"; }
-		$item = $this->get_bhl_item($part['ItemID']);
-		$item = $item['Result'][0]; // deference this fo ease of use
+			// Turn that into a list of pages, because we need the prefix (maybe)
+			$pages = [];
+			foreach ($part['Pages'] as $p) {
+				$pages[] = $p['PageID'];
+			}
+			// Get the info for the part from BHL
+			if ($this->verbose) { print "Getting ItemID {$part['ItemID']}\n"; }
+			$item = $this->get_bhl_item($part['ItemID']);
+			$item = $item['Result'][0]; // deference this fo ease of use
 
-		// Get the pages from BHL because maybe I need the file name prefix
-		if ($this->verbose) { print "Getting pages from {$item['SourceIdentifier']} \n"; }
-		$page_details = $this->get_bhl_pages($pages, $item['SourceIdentifier']);
+			// Get the pages from BHL because maybe I need the file name prefix
+			if ($this->verbose) { print "Getting pages from {$item['SourceIdentifier']} \n"; }
+			$page_details = $this->get_bhl_pages($pages, $item['SourceIdentifier']);
 
-		// Get our PDF
-		if ($this->verbose) { print "Getting DJVU file\n"; }
-		$djvu_path = $this->get_djvu($item['SourceIdentifier']);
+			// Get our PDF
+			if ($this->verbose) { print "Getting DJVU file\n"; }
+			$djvu_path = $this->get_djvu($item['SourceIdentifier']);
 
-		// Get our Images
-		if ($this->verbose) { print "Getting Page Images\n"; }
-		$ret = $this->get_page_images($page_details, $item['SourceIdentifier']);
-		if (!$ret) {
-			exit(1);
-		}
+			// Get our Images
+			if ($this->verbose) { print "Getting Page Images\n"; }
+			$ret = $this->get_page_images($page_details, $item['SourceIdentifier']);
+			if (!$ret) {
+				exit(1);
+			}
 
-		// Get the DJVU data
-		$djvu = new \PhpDjvu($djvu_path);
+			// Get the DJVU data
+			$djvu = new \PhpDjvu($djvu_path);
 
-		// ------------------------------
-		// Calculate the size of our page
-		// ------------------------------
-		$page_width_mm = 0;
-		$page_height_mm = 0;
+			// ------------------------------
+			// Calculate the size of our page
+			// ------------------------------
+			$page_width_mm = 0;
+			$page_height_mm = 0;
 
-		// Size of an A4 page
-		$max_page_width_mm = 210; // millimeters
-		$max_page_height_mm = 297; // millimeters
+			// Size of an A4 page
+			$max_page_width_mm = 210; // millimeters
+			$max_page_height_mm = 297; // millimeters
 
-		// Calculate the upper limits of the size of all images 
-		$max_img_width_px = 0;
-		$max_img_height_px = 0;
-		foreach ($page_details as $p) {
-			$filename = $this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg';
-			$imagesize = getimagesize($filename);
-			if ($imagesize[0] > $max_img_width_px) { $max_img_width_px = (int)($imagesize[0] * $this->config->get('image.resize')); }
-			if ($imagesize[1] > $max_img_height_px) { $max_img_height_px = (int)($imagesize[1] * $this->config->get('image.resize')); }
-		}
+			// Calculate the upper limits of the size of all images 
+			$max_img_width_px = 0;
+			$max_img_height_px = 0;
+			foreach ($page_details as $p) {
+				$filename = $this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg';
+				$imagesize = getimagesize($filename);
+				if ($imagesize[0] > $max_img_width_px) { $max_img_width_px = (int)($imagesize[0] * $this->config->get('image.resize')); }
+				if ($imagesize[1] > $max_img_height_px) { $max_img_height_px = (int)($imagesize[1] * $this->config->get('image.resize')); }
+			}
 
-		// Decide if we need to fix the height or the width
-		$image_aspect_ratio = $max_img_height_px / $max_img_width_px;
-		$page_aspect_ratio = $max_page_height_mm / $max_page_width_mm;
+			// Decide if we need to fix the height or the width
+			$image_aspect_ratio = $max_img_height_px / $max_img_width_px;
+			$page_aspect_ratio = $max_page_height_mm / $max_page_width_mm;
 
-		// Do we fit to the height or the width?
-		if ($image_aspect_ratio > $page_aspect_ratio) {
-			// Image is narrower than an A4 page, fit to the height
-			$dpm = $max_img_height_px / $max_page_height_mm;
-		} else {
-			// Image is wider than an A4 page, fit to the width
-			$dpm = $max_img_width_px / $max_page_width_mm;
-		}
-		// Convert to millimeters
-		$page_width_mm = $max_img_width_px / $dpm; 
-		$page_height_mm = $max_img_height_px / $dpm;
+			// Do we fit to the height or the width?
+			if ($image_aspect_ratio > $page_aspect_ratio) {
+				// Image is narrower than an A4 page, fit to the height
+				$dpm = $max_img_height_px / $max_page_height_mm;
+			} else {
+				// Image is wider than an A4 page, fit to the width
+				$dpm = $max_img_width_px / $max_page_width_mm;
+			}
+			// Convert to millimeters
+			$page_width_mm = $max_img_width_px / $dpm; 
+			$page_height_mm = $max_img_height_px / $dpm;
 
-		// ------------------------------
-		// Generate the PDF
-		// ------------------------------
-		$pdf = new \CustomPdf('P', 'mm', array($page_width_mm, $page_height_mm));
-		$pdf->SetAutoPageBreak(false);
-		$pdf->SetMargins(0, 0);
+			// ------------------------------
+			// Generate the PDF
+			// ------------------------------
+			$pdf = new \CustomPdf('P', 'mm', array($page_width_mm, $page_height_mm));
+			$pdf->SetAutoPageBreak(false);
+			$pdf->SetMargins(0, 0);
 
-		$params = [];
-		$c = 0;
-		foreach ($pages as $pg) {
-			$p = $page_details['pageid-'.$pg];
-			if ($this->verbose) { print chr(13)."Processing Page {$c} of ".count($pages); }
+			$params = [];
+			$c = 0;
+			foreach ($pages as $pg) {
+				$p = $page_details['pageid-'.$pg];
+				if ($this->verbose) { print chr(13)."Processing Page {$c} of ".count($pages); }
 
-			$filename = $this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg';
-			
-			// Resize the image
-			
-			if ($this->config->get('image.resize') != 1) {
-				$factor = (int)($this->config->get('image.resize') * 100);
-				if (!file_exists($this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg')) {
-					$cmd = "convert -resize ".$factor."% "
-						."'".$this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg'."' "
-						."'".$this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg'."'";
-					`$cmd`;
+				$filename = $this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg';
+				
+				// Resize the image
+				
+				if ($this->config->get('image.resize') != 1) {
+					$factor = (int)($this->config->get('image.resize') * 100);
+					if (!file_exists($this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg')) {
+						$cmd = "convert -resize ".$factor."% "
+							."'".$this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg'."' "
+							."'".$this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg'."'";
+						`$cmd`;
+					}
+					$filename = $this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg';
 				}
-				$filename = $this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg';
+
+				$imagesize = getimagesize($filename);
+				$img_width = $imagesize[0];
+				$img_height = $imagesize[1];
+				$img_aspect_ratio = ($img_width / $img_height);
+
+				$pdf->AddPage();
+				$pdf->SetFont('Helvetica', '', 14);
+				$pdf->SetTextColor(0, 0, 0);
+
+				// Calculate the white space needed on the left and right
+				$h_space = ($max_page_width_mm - ($img_width / $dpm)) / 2; 
+				$v_space = ($max_page_height_mm - ($img_height / $dpm)) / 2; 
+				// Get the lines, Add the text to the page
+				$lines = $djvu->GetPageLines($p['FileNamePrefix'], $this->config->get('image.resize'), $dpm);
+				foreach ($lines as $l) {
+					$pdf->setXY($l['x'], $l['y']);
+					$pdf->Cell($l['w'], $l['h'], $l['text'], 0, 0, 'FJ'); // FJ = force full justifcation
+				}
+
+				$pdf->Image($filename, 0, 0, ($dpm * -25.4));
+				$c++;
+			} // foreach pages
+			print "\n";
+			$pdf->SetCompression(false);
+			$pdf->SetDisplayMode('fullpage','two');
+
+			// Set the title metadata
+			$title = $part['Genre'].': "'.$part['Title'].'"'
+							.' From '.$part['ContainerTitle']
+							.(isset($part['Volume']) ? ' Volume '.$part['Volume'] : '')
+							.(isset($part['Issue']) ? ', Issue '.$part['Issue'] : '')
+							.(isset($part['Date']) ? ' ('.$part['Date'].')' : '')
+							.(isset($part['PageRange']) ? ', '.$part['PageRange'].'' : '')
+							.'.';
+			$pdf->SetTitle($title);
+
+			// Set the Author Metadata
+			$temp = [];
+			foreach ($part['Authors'] as $a) {
+				$temp[] = $a['Name'].(isset($a['Dates']) ? ' ('.$a['Dates'].')' : '');
+			}
+			$pdf->SetAuthor(implode('; ', $temp));
+
+			// Set the Subject metadata, which we are hijacking to link back to BHL
+			$pdf->SetSubject('From the Biodiversity Heritage Library');	
+
+			// Set the Keyword metadata (scientific names)
+			$temp = [];
+			foreach ($part['Names'] as $a) {
+				if ($a['NameConfirmed']) {
+						$temp[] = preg_replace('/,/',';',iconv("UTF-8", "ASCII//TRANSLIT", $a['NameConfirmed']));
+				}
 			}
 
-			$imagesize = getimagesize($filename);
-			$img_width = $imagesize[0];
-			$img_height = $imagesize[1];
-			$img_aspect_ratio = ($img_width / $img_height);
+			$pdf->SetCreator($part['PartUrl']);
 
-			$pdf->AddPage();
-			$pdf->SetFont('Helvetica', '', 14);
-			$pdf->SetTextColor(0, 0, 0);
-
-			// Calculate the white space needed on the left and right
-			$h_space = ($max_page_width_mm - ($img_width / $dpm)) / 2; 
-			$v_space = ($max_page_height_mm - ($img_height / $dpm)) / 2; 
-			// Get the lines, Add the text to the page
-			$lines = $djvu->GetPageLines($p['FileNamePrefix'], $this->config->get('image.resize'), $dpm);
-			foreach ($lines as $l) {
-				$pdf->setXY($l['x'], $l['y']);
-				$pdf->Cell($l['w'], $l['h'], $l['text'], 0, 0, 'FJ'); // FJ = force full justifcation
-			}
-
-			$pdf->Image($filename, 0, 0, ($dpm * -25.4));
-			$c++;
-		} // foreach pages
-		print "\n";
-		$pdf->SetCompression(false);
-		$pdf->SetDisplayMode('fullpage','two');
-
-		// Set the title metadata
-		$title = $part['Genre'].': "'.$part['Title'].'"'
-						.' From '.$part['ContainerTitle']
-						.(isset($part['Volume']) ? ' Volume '.$part['Volume'] : '')
-						.(isset($part['Issue']) ? ', Issue '.$part['Issue'] : '')
-						.(isset($part['Date']) ? ' ('.$part['Date'].')' : '')
-						.(isset($part['PageRange']) ? ', '.$part['PageRange'].'' : '')
-						.'.';
-		$pdf->SetTitle($title);
-
-		// Set the Author Metadata
-		$temp = [];
-		foreach ($part['Authors'] as $a) {
-			$temp[] = $a['Name'].(isset($a['Dates']) ? ' ('.$a['Dates'].')' : '');
-		}
-		$pdf->SetAuthor(implode('; ', $temp));
-
-		// Set the Subject metadata, which we are hijacking to link back to BHL
-		$pdf->SetSubject('From the Biodiversity Heritage Library');	
-
-		// Set the Keyword metadata (scientific names)
-		$temp = [];
-		foreach ($part['Names'] as $a) {
-			if ($a['NameConfirmed']) {
-					$temp[] = preg_replace('/,/',';',iconv("UTF-8", "ASCII//TRANSLIT", $a['NameConfirmed']));
-			}
-		}
-
-		$pdf->SetCreator($part['PartUrl']);
-
-		// All done!
-		$pdf->Output('F',$output_filename);
-		$this->pdf_add_xmp($part, $item, $output_filename);
-		chmod($output_filename, 0644);
-		$this->log->notice("PDF for segment $id finished.", ['pid' => \posix_getpid()]);
+			// All done!
+			$pdf->Output('F',$output_filename);
+			$this->pdf_add_xmp($part, $item, $output_filename);
+			chmod($output_filename, 0644);
+			$this->log->notice("PDF for segment $id finished.", ['pid' => \posix_getpid()]);
 		} catch (\Exception $e) {
 			$this->log->error("Exception while processing segment $id: ".$e->getMessage(), ['pid' => \posix_getpid()]);
 			return;
