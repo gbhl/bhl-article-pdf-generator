@@ -1,9 +1,9 @@
+#!/opt/rh/rh-php73/root/usr/bin/php
 <?php
 namespace QueueWatcher;
 require_once __DIR__ . '/vendor/autoload.php';
 require_once './packages/bhl/pdfgenerator/src/PDFGenerator.php';
 require_once './packages/bhl/pdfgenerator/src/ForceJustify.php';
-ini_set('memory_limit','1024M');
 
 use PDODb;
 use Noodlehaus\Config;
@@ -13,6 +13,8 @@ use BHL\PDFGenerator\MakePDF;
 
 $config = new Config('config/config.json');
 $pdfgen = new MakePDF($config);
+
+ini_set("memory_limit", $config->get('max_memory'));
 
 $connection = new AMQPStreamConnection(
 	$config->get('mq.hostname'), 
