@@ -1,3 +1,4 @@
+#!/opt/rh/rh-php73/root/usr/bin/php
 <?php
 namespace QueueWatcher;
 require_once __DIR__ . '/vendor/autoload.php';
@@ -15,9 +16,7 @@ use Monolog\Handler\StreamHandler;
 $config = new Config('config/config.json');
 $pdfgen = new MakePDF($config);
 
-// if (!file_exists(dirname($config->get('logging.filename')))) {
-// 	mkdir(dirname($config->get('logging.filename')));
-// }
+ini_set("memory_limit", $config->get('max_memory'));
 
 $id = null;
 if (isset($argv[1])) {
