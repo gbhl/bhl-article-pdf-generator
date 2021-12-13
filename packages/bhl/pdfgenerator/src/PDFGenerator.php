@@ -22,10 +22,12 @@ class MakePDF {
 	private $bhl_dbh = null;
 	private $config;
 	private $log;
+	private $verbose = false;
 
-	public function __construct($config) {
+	public function __construct($config, $verbose = false) {
 		$this->config = $config;
 		$this->validate_config();
+		$this->verbose = $verbose;
 
 		// create a log channel
 		$dateFormat = "Y-m-d H:i:s T";
@@ -38,7 +40,8 @@ class MakePDF {
 	}
 	
 	function generate_article_pdf($id) {
-		$this->log->notice("Processing segment $id...", ['pid' => \posix_getppid()]);
+		try {
+		$this->log->notice("Processing segment $id...", ['pid' => \posix_getpid()]);
 		// Set our filename
 		$L1 = substr((string)$id, 0, 1);
 		$L2 = substr((string)$id, 1, 1);
@@ -63,16 +66,20 @@ class MakePDF {
 			$pages[] = $p['PageID'];
 		}
 		// Get the info for the part from BHL
+		if ($this->verbose) { print "Getting ItemID {$part['ItemID']}\n"; }
 		$item = $this->get_bhl_item($part['ItemID']);
 		$item = $item['Result'][0]; // deference this fo ease of use
 
 		// Get the pages from BHL because maybe I need the file name prefix
+		if ($this->verbose) { print "Getting pages from {$item['SourceIdentifier']} \n"; }
 		$page_details = $this->get_bhl_pages($pages, $item['SourceIdentifier']);
 
 		// Get our PDF
+		if ($this->verbose) { print "Getting DJVU file\n"; }
 		$djvu_path = $this->get_djvu($item['SourceIdentifier']);
 
 		// Get our Images
+		if ($this->verbose) { print "Getting Page Images\n"; }
 		$ret = $this->get_page_images($page_details, $item['SourceIdentifier']);
 		if (!$ret) {
 			exit(1);
@@ -128,17 +135,20 @@ class MakePDF {
 		$c = 0;
 		foreach ($pages as $pg) {
 			$p = $page_details['pageid-'.$pg];
+			if ($this->verbose) { print chr(13)."Processing Page {$c} of ".count($pages); }
 
 			$filename = $this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg';
 			
 			// Resize the image
+			
 			if ($this->config->get('image.resize') != 1) {
 				$factor = (int)($this->config->get('image.resize') * 100);
-
-				$cmd = "convert -resize ".$factor."% "
-							."'".$this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg'."' "
-							."'".$this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg'."'";
-				`$cmd`;
+				if (!file_exists($this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg')) {
+					$cmd = "convert -resize ".$factor."% "
+						."'".$this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg'."' "
+						."'".$this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg'."'";
+					`$cmd`;
+				}
 				$filename = $this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg';
 			}
 
@@ -164,6 +174,7 @@ class MakePDF {
 			$pdf->Image($filename, 0, 0, ($dpm * -25.4));
 			$c++;
 		} // foreach pages
+		print "\n";
 		$pdf->SetCompression(false);
 		$pdf->SetDisplayMode('fullpage','two');
 
@@ -199,8 +210,14 @@ class MakePDF {
 
 		// All done!
 		$pdf->Output('F',$output_filename);
-		$this->pdf_add_xmp($part, $item, $output_filename);		
-		$this->log->notice("PDF for segment $id finished.", ['pid' => \posix_getppid()]);
+		$this->pdf_add_xmp($part, $item, $output_filename);
+		chmod($output_filename, 0644);
+		$this->log->notice("PDF for segment $id finished.", ['pid' => \posix_getpid()]);
+		} catch (\Exception $e) {
+			$this->log->error("Exception while processing segment $id: ".$e->getMessage(), ['pid' => \posix_getpid()]);
+			return;
+		}
+
 	}
 
 	/*
@@ -261,6 +278,7 @@ class MakePDF {
 			} else {
 				$c = 1;
 				$total = count($pages);
+				if ($this->verbose) { print "Getting page image from ZIP\n"; }
 				foreach ($pages as $p) {
 					$f_jp2 = $p['FileNamePrefix'].'.jp2';
 					$f_jpg = $p['FileNamePrefix'].'.jpg';
@@ -287,6 +305,7 @@ class MakePDF {
 			} else {
 				$c = 1;
 				$total = count($pages);
+				if ($this->verbose) { print "Getting page image from TAR file\n"; }
 				foreach ($pages as $p) {
 					$f_jp2 = $p['FileNamePrefix'].'.jp2';
 					$f_jpg = $p['FileNamePrefix'].'.jpg';
@@ -307,6 +326,7 @@ class MakePDF {
 			}
 		} else {
 			// No, fall back to getting it from online
+			if ($this->verbose) { print "Getting page image from Internet Archive\n"; }
 			foreach ($pages as $p) {
 				$path = $this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg';
 				if (!file_exists($path) || $override) {
@@ -342,14 +362,14 @@ class MakePDF {
 			# did we actually get results?
 			if (count($object['Result']) == 0) {
 				unlink($path); # since we had an error, delete this from the cache.
-				$this->log->error('Segment '.$id.' not found.', ['pid' => \posix_getppid()]);
+				$this->log->error('Segment '.$id.' not found.', ['pid' => \posix_getpid()]);
 			} else {
 				# looks good, return the object
 				return $object;
 			}
 		} else {
 			unlink($path); # since we had an error, delete this from the cache.
-			$this->log->error('Error getting segment metadata: '.$object['ErrorMessage'], ['pid' => \posix_getppid()]);
+			$this->log->error('Error getting segment metadata: '.$object['ErrorMessage'], ['pid' => \posix_getpid()]);
 		}
 	}
 
