@@ -16,7 +16,7 @@
 			"password": "**PASSWORD**"
 		}
 	},
-        "max_memory": "1536M",
+  "max_memory": "1536M",
 	"cache": {
 		"_instructions": [
 			"CACHE.LIFETIME (integer) How many days can pass before we re-fetch somnething from the web.",
