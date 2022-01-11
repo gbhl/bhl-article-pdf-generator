@@ -43,8 +43,8 @@ class MakePDF {
 	
 	function generate_article_pdf($id) {
 		try {
-			if ($this->verbose) { print "Processing segment $id...\n"; }
 			$this->log->notice("Processing segment $id...", ['pid' => \posix_getpid()]);
+			if ($this->verbose) { print "Processing segment $id\n"; }
 			// Set our filename
 			$L1 = substr((string)$id, 0, 1);
 			$L2 = substr((string)$id, 1, 1);
@@ -57,9 +57,10 @@ class MakePDF {
 			$this->clean_cache();
 
 			// Get the basic segment info
-			if ($this->verbose) { print "Getting Segment Metadata...\n"; }
+			if ($this->verbose) { print "Getting BHL Segment Metadata\n"; }
 			$part = $this->get_bhl_segment($id);
-			$part = $part['Result'][0]; // deference this fo ease of use
+			if (!$part) { return; }
+			$part = $part['Result'][0]; // deference this for ease of use
 
 			if (isset($part['ExternalUrl'])) {
 				if ($part['ExternalUrl'] != '') {
@@ -79,10 +80,12 @@ class MakePDF {
 			foreach ($part['Pages'] as $p) {
 				$pages[] = $p['PageID'];
 			}
+			if ($this->verbose) { print "Segment $id has ".count($pages)." pages\n"; }
 			// Get the info for the part from BHL
 			if ($this->verbose) { print "Getting ItemID {$part['ItemID']}\n"; }
 			$item = $this->get_bhl_item($part['ItemID']);
-			$item = $item['Result'][0]; // deference this fo ease of use
+			if (!$item) { return; }
+			$item = $item['Result'][0]; // deference this for ease of use
 
 			// Get the pages from BHL because maybe I need the file name prefix
 			if ($this->verbose) { print "Getting pages from {$item['SourceIdentifier']} \n"; }
@@ -294,11 +297,12 @@ class MakePDF {
 			} else {
 				$c = 1;
 				$total = count($pages);
-				if ($this->verbose) { print "Getting page image from ZIP\n"; }
+				if ($this->verbose) { print "Getting Page Images from ZIP\n"; }
 				foreach ($pages as $p) {
 					$f_jp2 = $p['FileNamePrefix'].'.jp2';
 					$f_jpg = $p['FileNamePrefix'].'.jpg';
 					$fp = $identifier.'_jp2/'.$f_jp2;
+					if ($this->verbose) { print "Extracting $fp\n"; }
 					if (!file_exists($this->config->get('cache.paths.image').'/'.$f_jpg)) {
 						// Extract them from the ZIP file
 						if (!$zip->extractTo($this->config->get('cache.paths.image'), $fp)) {
@@ -306,6 +310,7 @@ class MakePDF {
 						} else {
 							// Convert to JPEG and move to the cache folder
 							$im = new \Imagick ();
+							if ($this->verbose) { print "Converting to $f_jpg\n"; }
 							$im->readImage($this->config->get('cache.paths.image').'/'.$fp);
 							$im->writeImage($this->config->get('cache.paths.image').'/'.$f_jpg);
 						}
@@ -379,6 +384,7 @@ class MakePDF {
 			if (count($object['Result']) == 0) {
 				unlink($path); # since we had an error, delete this from the cache.
 				$this->log->error('Segment '.$id.' not found.', ['pid' => \posix_getpid()]);
+				return null;
 			} else {
 				# looks good, return the object
 				return $object;
@@ -413,7 +419,8 @@ class MakePDF {
 			# did we actually get results?
 			if (count($object['Result']) == 0) {
 				unlink($path); # since we had an error, delete this from the cache.
-				die('Item '.$id.' not found.'."\n");		
+                                $this->log->error('Item '.$id.' not found.', ['pid' => \posix_getpid()]);
+				return null;
 			} else {
 				# looks good, return the object
 				return $object;
@@ -494,6 +501,13 @@ class MakePDF {
 	}
 
 	/**
+	* An ugly, non-ASCII-character safe replacement of escapeshellarg().
+	*/
+	function escapeshellarg_special($file) {
+		return "'" . str_replace("'", "'\"'\"'", $file) . "'";
+	}
+
+	/**
 	 * @brief Inject XMP metadata into PDF
 	 *
 	 * We inject XMP metadata using Exiftools
@@ -515,8 +529,9 @@ class MakePDF {
 		
 		// Authors
 		foreach ($part['Authors'] as $a) {
-			$name = $a['Name'].' '.(isset($a['Dates']) ? ' ('.$a['Dates'].')' : '');
-			$metadata[] = "-XMP:Creator+=".escapeshellarg($name);
+			$name = trim($a['Name'].' '.(isset($a['Dates']) ? ' ('.$a['Dates'].')' : ''));
+			$name = preg_replace('/\\0/', "", $name);
+			$metadata[] = "-XMP:Creator+=".$this->escapeshellarg_special($name);
 		}
 		
 		// Article
