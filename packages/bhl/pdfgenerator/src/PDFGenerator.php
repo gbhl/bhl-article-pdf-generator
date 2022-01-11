@@ -28,6 +28,7 @@ class MakePDF {
 		$this->config = $config;
 		$this->validate_config();
 		$this->verbose = $verbose;
+		if ($this->verbose) { print "Creating PDF generator.\n"; }
 
 		// create a log channel
 		$dateFormat = "Y-m-d H:i:s T";
@@ -37,10 +38,12 @@ class MakePDF {
 		$stream->setFormatter($formatter);
 		$this->log = new Logger('makepdf');
 		$this->log->pushHandler($stream);
+		if ($this->verbose) { print "Logger Created\n"; }
 	}
 	
 	function generate_article_pdf($id) {
 		try {
+			if ($this->verbose) { print "Processing segment $id...\n"; }
 			$this->log->notice("Processing segment $id...", ['pid' => \posix_getpid()]);
 			// Set our filename
 			$L1 = substr((string)$id, 0, 1);
@@ -50,17 +53,28 @@ class MakePDF {
 				mkdir($this->config->get('paths.output').'/'.$L1.'/'.$L2, 0755, true);
 			}
 
+			if ($this->verbose) { print "Cleaning the cache...\n"; }
 			$this->clean_cache();
 
 			// Get the basic segment info
+			if ($this->verbose) { print "Getting Segment Metadata...\n"; }
 			$part = $this->get_bhl_segment($id);
 			$part = $part['Result'][0]; // deference this fo ease of use
 
+			if (isset($part['ExternalUrl'])) {
+				if ($part['ExternalUrl'] != '') {
+					if ($this->verbose) { print "Part points to an external URL. Skipping.\n"; }
+					$this->log->notice("Segment $id points to an external URL. Skipping.", ['pid' => \posix_getpid()]);
+					return;
+				}
+			}
 			if (!isset($part['ItemID'])) {
+				if ($this->verbose) { print "Part has no item id!\n"; }
 				return false;                    
 			}
 
 			// Turn that into a list of pages, because we need the prefix (maybe)
+			if ($this->verbose) { print "Preprocessing pages...\n"; }
 			$pages = [];
 			foreach ($part['Pages'] as $p) {
 				$pages[] = $p['PageID'];
@@ -212,8 +226,10 @@ class MakePDF {
 			$pdf->Output('F',$output_filename);
 			$this->pdf_add_xmp($part, $item, $output_filename);
 			chmod($output_filename, 0644);
+			if ($this->verbose) { print "PDF for segment $id finished\n"; }
 			$this->log->notice("PDF for segment $id finished.", ['pid' => \posix_getpid()]);
 		} catch (\Exception $e) {
+			if ($this->verbose) { print "Exception while processing segment $id: ".$e->getMessage()."\n"; }
 			$this->log->error("Exception while processing segment $id: ".$e->getMessage(), ['pid' => \posix_getpid()]);
 			return;
 		}
