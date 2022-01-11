@@ -13,6 +13,7 @@ use BHL\PDFGenerator\MakePDF;
 
 $config = new Config('config/config.json');
 $pdfgen = new MakePDF($config);
+$limit = 5;
 
 ini_set("memory_limit", $config->get('max_memory'));
 
@@ -28,22 +29,31 @@ $channel->basic_qos(null, 1, null);
 
 $process_messsage = function($msg){
 	global $pdfgen;
+	global $channel;
+	global $config;
 	
-	$message = explode('|', trim($msg->body));
-	$id = $message[2];
-	$pdfgen->generate_article_pdf($id);
-	$msg->ack();
+	$body = explode('|', trim($msg->body));
+	$id = $body[2];
+	try {
+		// Generate the PDF
+		$pdfgen->generate_article_pdf($id);
+		$msg->ack();
+	} catch (\Exception $e) {
+		# Publish the ID to the error queue. THIS IS A HACK. I think.
+		$channel->basic_publish($msg, '', $config->get('mq.error_queue_name'));
+		$msg->ack();
+	}
 };
 
 $channel->basic_consume($config->get('mq.queue_name'), '', false, false, false, false, $process_messsage);
 
+$count = 0;
 while (count($channel->callbacks)) {
+	print "Sleeping 3 sec...\n";
+	sleep(1);
 	$channel->wait();
-}
-register_shutdown_function('shutdown', $channel, $connection);
-
-function shutdown($channel, $connection) {
-	$channel->close();
-	$connection->close();
+	if ($count++ >= $limit) { break; }
 }
 
+$channel->close();
+$connection->close();

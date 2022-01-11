@@ -242,6 +242,7 @@ class MakePDF {
 		} catch (\Exception $e) {
 			if ($this->verbose) { print "Exception while processing segment $id: ".$e->getMessage()."\n"; }
 			$this->log->error("Exception while processing segment $id: ".$e->getMessage(), ['pid' => \posix_getpid()]);
+			throw new \Exception("Exception while processing segment $id: ".$e->getMessage());
 			return;
 		}
 
