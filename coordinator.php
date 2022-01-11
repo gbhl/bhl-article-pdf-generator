@@ -23,5 +23,5 @@ while (true) {
 		fwrite($fh, "[{$dt}] Parent spawning child...\n");
 		`$command`;
 	}
-	sleep(10);
+	sleep(5);
 }
