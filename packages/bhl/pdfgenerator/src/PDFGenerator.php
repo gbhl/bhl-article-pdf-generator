@@ -593,8 +593,10 @@ class MakePDF {
 	  Be Nice to the disk. It is your friend.
 	 */
 	private function clean_cache() {
-		`find {$this->config->get('cache.paths.image')} -type f -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
-		`find {$this->config->get('cache.paths.resize')} -type f -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
-		`find {$this->config->get('cache.paths.pdf')} -type f -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
+		`find {$this->config->get('cache.paths.image')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
+		`find {$this->config->get('cache.paths.resize')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
+		`find {$this->config->get('cache.paths.pdf')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
+		`find {$this->config->get('cache.paths.json')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
+		`find {$this->config->get('cache.paths.djvu')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
 	}
 }
