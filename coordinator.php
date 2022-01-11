@@ -1,5 +1,13 @@
 #!/opt/rh/rh-php73/root/usr/bin/php
 <?php
+
+// ******************************************
+// BHL PDF Generator Multi-Processing
+//
+// Manage multple child processes for 
+// pushing through the BHL PDF message queue.
+// ******************************************
+
 $max = 4;
 $child_script = "queue-pull.php";
 

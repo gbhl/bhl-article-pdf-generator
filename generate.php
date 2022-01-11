@@ -1,5 +1,13 @@
 #!/opt/rh/rh-php73/root/usr/bin/php
 <?php
+
+// ******************************************
+// Generate one PDF
+//
+// Get a PartID number on the URL and generate
+// the PDF. Makes lots of output.
+// ******************************************
+
 namespace QueueWatcher;
 require_once __DIR__ . '/vendor/autoload.php';
 require_once './packages/bhl/pdfgenerator/src/PDFGenerator.php';
