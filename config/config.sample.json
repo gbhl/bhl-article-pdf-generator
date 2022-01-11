@@ -34,7 +34,8 @@
 		"port": "5672",
 		"username": "USER",
 		"password": "PASS",
-		"queue_name": "Q-NAME"
+		"queue_name": "Q-NAME",
+		"error_queue_name": "Q-NAME-ERROR"
 	},
 	"logging": {
 		"filename": "./log/pdf-generator.log"

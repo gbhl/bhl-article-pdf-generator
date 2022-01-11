@@ -14,6 +14,8 @@ The message queue that is used to hold the ID numbers of BHL Segments that need 
 
 **mq.queue_name** _(string)_ - Name of the queue from which to pull.
 
+**mq.error_queue_name** _(string)_ - Name of the queue for where to place things that cause errors.
+
 ## BHL Section
 
 Settings with which to connect to BHL to gather information. At this time, we need a live database connection since the API doesn't (yet?) offer all the data we need to collect.
