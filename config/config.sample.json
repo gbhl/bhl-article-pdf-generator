@@ -1,27 +1,18 @@
 {
 	"bhl": {
-		"_instructions": [
-			"BHL.API_KEY (guid) is used to identify our activity at BHL. Get one at https: //www.biodiversitylibrary.org/getapikey.aspx.",
-			"BHL.DB (structure) contains the settings needed to connect directly to the BHL Database.",
-			"BHL.DB.TYPE (string) may be 'dblib' or 'mssql'"
-		],
-		"api_key": "**STRING**",
+		"api_key": "STRING",
 		"db": {
 			"type": "dblib",
-			"host": "**DATABASE.EXAMPLE.COM**",
-			"dbname": "**DATABASE**",
+			"host": "DATABASE.EXAMPLE.COM",
+			"dbname": "DATABASE",
 			"port": "1433",
 			"charset": "utf8",
-			"username": "**USERNAME**",
-			"password": "**PASSWORD**"
+			"username": "USERNAME",
+			"password": "PASSWORD"
 		}
 	},
   "max_memory": "1536M",
 	"cache": {
-		"_instructions": [
-			"CACHE.LIFETIME (integer) How many days can pass before we re-fetch somnething from the web.",
-			"CACHE.PATHS (structure) Places where we save things. Most of these don't need to be changed."
-		],
 		"lifetime": 2,
 		"paths": {
 			"pdf": "./cache/pdf",
@@ -32,34 +23,18 @@
 		}
 	},
 	"paths": {
-		"_instructions": [
-			"PATHS.OUTPUT (filesystem path) Where do the PDFs go when they are done?",
-			"PATHS.SOURCE (filesystem path) Where can we go instead of the web to get image files? Expects the structure in this folder to be I/Identifier00 (first letter, IA identifier)"
-		],
 		"output": "./output",
-		"local_source": "**PATH**"
+		"local_source": "PATH"
 	},
 	"image": {
-		"_instructions": [
-			"IMAGE.RESIZE (float, 0.0 - 1.0) Do we resize the images to make the resulting PDF smaller? ",
-			"Anything other than 1 will slow down the processing but result in larger files"
-		],
 		"resize": "0.50"
 	},
 	"mq": {
-		"_instructions": [
-			"MQ -- Where is the message queue for PDFs that need updating",
-			"MQ.HOSTNAME (string)",
-			"MQ.PORT (number)",
-			"MQ.USERNAME (string) ",
-			"MQ.PASSWORD (string) ",
-			"MQ.QUEUE_NAME (string) "
-		],
-		"hostname": "**RABBITMQ.EXAMPLE.COM**",
+		"hostname": "RABBITMQ.EXAMPLE.COM",
 		"port": "5672",
-		"username": "**USER**",
-		"password": "**PASS**",
-		"queue_name": "**Q-NAME**"
+		"username": "USER",
+		"password": "PASS",
+		"queue_name": "Q-NAME"
 	},
 	"logging": {
 		"filename": "./log/pdf-generator.log"
