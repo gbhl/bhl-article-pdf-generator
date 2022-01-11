@@ -24,6 +24,10 @@ class MakePDF {
 	private $log;
 	private $verbose = false;
 
+	/*
+		CONSTRUCTOR
+		Set up logging, check config.
+	 */
 	public function __construct($config, $verbose = false) {
 		$this->config = $config;
 		$this->validate_config();
@@ -41,6 +45,10 @@ class MakePDF {
 		if ($this->verbose) { print "Logger Created\n"; }
 	}
 	
+	/*
+		GENERATE ARTICLE PDF
+		Main action, do all the things!
+	 */
 	function generate_article_pdf($id) {
 		try {
 			$this->log->notice("Processing segment $id...", ['pid' => \posix_getpid()]);
@@ -242,7 +250,7 @@ class MakePDF {
 	/*
 		GET PDF
 		Download a PDF from the Internet Archive
-	*/
+	 */
 	private function get_archive_pdf($identifier, $override = false) {
 
 		$filename = $identifier.'.pdf';
@@ -257,7 +265,7 @@ class MakePDF {
 	/*
 		GET DJVU XML
 		Download a PDF from the Internet Archive
-	*/
+	 */
 	private function get_djvu($identifier, $override = false) {		
 		$letter = substr($identifier,0,1);
 		$filename = $identifier.'_djvu.xml';
@@ -281,7 +289,7 @@ class MakePDF {
 		GET PAGE IMAGES
 		Given an array of Page IDs, download the images from IA
 		(future versions of this will grab the image from our TAR file)
-	*/
+	 */
 	private function get_page_images($pages, $identifier, $override = false) {
 
 		$letter = substr($identifier,0,1);
@@ -362,7 +370,7 @@ class MakePDF {
 	/* 
 		GET BHL SEGMENT
 		Download the segment metadata from BHL
-	*/
+	 */
 	private function get_bhl_segment($id, $override = false) {
 
 		# build a filename
@@ -398,7 +406,7 @@ class MakePDF {
 	/* 
 		GET BHL ITEM
 		Download the segmnent metadata from BHL
-	*/
+	 */
 	private function get_bhl_item($id, $override = false) {
 		
 		# build a filename
@@ -434,7 +442,7 @@ class MakePDF {
 	/* 
 		GET BHL PAGES
 		For a given item id get the pages at BHL
-	*/
+	 */
 	private function get_bhl_pages($pages = array()) {
 		
 		if (!$this->bhl_dbh) {
@@ -459,28 +467,10 @@ class MakePDF {
 		}
 	}
 
-	private function get_bhl_rights_holder($item_id) {
-		
-		$stmt = $this->bhl_dbh->prepare(
-			'SELECT i.InstitutionName
-			FROM ItemInstitution ii 
-			INNER JOIN Book b ON b.ItemID = ii.ItemID
-			INNER JOIN Institution i ON ii.InstitutionCode = i.InstitutionCode
-			WHERE b.BookID = ?
-			AND ii.InstitutionRoleID = 2' // 2 = Rights Holder
-		);
-		$stmt->execute(array($item_id));
-		$row = null;
-		if ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
-			return $row['InstitutionName'];
-		}
-		return null;
-	}
-
 	/* 
 		VALIDATE INPUT
 		Make sure we have everything we need to continue
-	*/
+	 */
 	private function validate_config() {
 
 		# do we have a BHL API Key
@@ -500,22 +490,15 @@ class MakePDF {
 		}
 	}
 
-	/**
-	* An ugly, non-ASCII-character safe replacement of escapeshellarg().
-	*/
+	/*
+	  An ugly, non-ASCII-character safe replacement of escapeshellarg().
+	 */
 	function escapeshellarg_special($file) {
 		return "'" . str_replace("'", "'\"'\"'", $file) . "'";
 	}
 
-	/**
-	 * @brief Inject XMP metadata into PDF
-	 *
-	 * We inject XMP metadata using Exiftools
-	 *
-	 * @param reference Reference 
-	 * @param pdf_filename Full path of PDF file to process
-	 * @param tags Tags to add to PDF
-	 *
+	/*
+	  Inject XMP metadata into PDF
 	 */
 	private function pdf_add_xmp($part, $item, $pdf) {	
 		$metadata = [];
@@ -559,9 +542,8 @@ class MakePDF {
 			if (isset($part['RightsStatus'])) {
 				$metadata[] = "-XMP:Rights=".escapeshellarg($part['RightsStatus']);
 			}
-			$rights_holder = $this->get_bhl_rights_holder($part['ItemID']);
-			if ($rights_holder) {
-				$metadata[] = "-XMP:RightsOwner=".escapeshellarg($rights_holder);
+			if (isset($item['RightsHolder'])) {
+				$metadata[] = "-XMP:RightsOwner=".escapeshellarg($item['RightsHolder']);
 				$metadata[] = "-XMP:License=".escapeshellarg($item['LicenseUrl']);
 			}
 			if (isset($part['RelatedParts'])) {
@@ -606,141 +588,12 @@ class MakePDF {
 		`$cmd`;
 	}	
 
+	/*
+	  Be Nice to the disk. It is your friend.
+	 */
 	private function clean_cache() {
 		`find {$this->config->get('cache.paths.image')} -type f -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
 		`find {$this->config->get('cache.paths.resize')} -type f -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
 		`find {$this->config->get('cache.paths.pdf')} -type f -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
 	}
-
-/*
-<taginfo>
-	<table name='XMP::cc' g0='XMP' g1='XMP-cc' g2='Author'>
-		<desc lang='en'>XMP cc</desc>
-		<tag id='attributionName' name='AttributionName' type='string' writable='true'/>
-		<tag id='attributionURL' name='AttributionURL' type='string' writable='true'/>
-		<tag id='deprecatedOn' name='DeprecatedOn' type='date' writable='true' g2='Time'/>
-		<tag id='jurisdiction' name='Jurisdiction' type='string' writable='true'/>
-		<tag id='legalcode' name='LegalCode' type='string' writable='true'/>
-		<tag id='license' name='License' type='string' writable='true'/>
-		<tag id='morePermissions' name='MorePermissions' type='string' writable='true'/>
-		<tag id='permits' name='Permits' type='string' writable='true'>
-			<values>
-				<key id='cc:DerivativeWorks'/>
-				<key id='cc:Distribution'/>
-				<key id='cc:Reproduction'/>
-				<key id='cc:Sharing'/>
-			</values>
-		</tag>
-		<tag id='prohibits' name='Prohibits' type='string' writable='true'>
-			<values>
-				<key id='cc:CommercialUse'/>
-				<key id='cc:HighIncomeNationUse'/>
-			</values>
-		</tag>
-		<tag id='requires' name='Requires' type='string' writable='true'>
-			<values>
-				<key id='cc:Attribution'/>
-				<key id='cc:Copyleft'/>
-				<key id='cc:LesserCopyleft'/>
-				<key id='cc:Notice'/>
-				<key id='cc:ShareAlike'/>
-				<key id='cc:SourceCode'/>
-			</values>
-		</tag>
-		<tag id='useGuidelines' name='UseGuidelines' type='string' writable='true'/>
-	</table>
-
-	<table name='XMP::dc' g0='XMP' g1='XMP-dc' g2='Other'>
-		<desc lang='en'>XMP Dublin Core</desc>
-		<tag id='contributor' name='Contributor' type='string' writable='true' g2='Author'/>
-		<tag id='coverage' name='Coverage' type='string' writable='true'/>
-		<tag id='creator' name='Creator' type='string' writable='true' g2='Author'/>
-		<tag id='date' name='Date' type='date' writable='true' g2='Time'/>
-		<tag id='description' name='Description' type='lang-alt' writable='true' g2='Image'/>
-		<tag id='format' name='Format' type='string' writable='true' g2='Image'/>
-		<tag id='identifier' name='Identifier' type='string' writable='true' g2='Image'/>
-		<tag id='language' name='Language' type='string' writable='true'/>
-		<tag id='publisher' name='Publisher' type='string' writable='true' g2='Author'/>
-		<tag id='relation' name='Relation' type='string' writable='true'/>
-		<tag id='rights' name='Rights' type='lang-alt' writable='true' g2='Author'/>
-		<tag id='source' name='Source' type='string' writable='true' g2='Author'/>
-		<tag id='subject' name='Subject' type='string' writable='true' g2='Image'/>
-		<tag id='title' name='Title' type='lang-alt' writable='true' g2='Image'/>
-		<tag id='type' name='Type' type='string' writable='true' g2='Image'/>
-	</table>
-
-	<table name='XMP::pdf' g0='XMP' g1='XMP-pdf' g2='Image'>
-		<desc lang='en'>XMP PDF</desc>
-		<tag id='Author' name='Author' type='string' writable='true' g2='Author'/>
-		<tag id='Copyright' name='Copyright' type='string' writable='true' g2='Author'/>
-		<tag id='CreationDate' name='CreationDate' type='date' writable='true' g2='Time'/>
-		<tag id='Creator' name='Creator' type='string' writable='true' g2='Author'/>
-		<tag id='Keywords' name='Keywords' type='string' writable='true'/>
-		<tag id='Marked' name='Marked' type='boolean' writable='true'/>
-		<tag id='ModDate' name='ModDate' type='date' writable='true' g2='Time'/>
-		<tag id='PDFVersion' name='PDFVersion' type='string' writable='true'/>
-		<tag id='Producer' name='Producer' type='string' writable='true' g2='Author'/>
-		<tag id='Subject' name='Subject' type='string' writable='true'/>
-		<tag id='Title' name='Title' type='string' writable='true'/>
-		<tag id='Trapped' name='Trapped' type='string' writable='true'>
-			<values>
-				<key id='False'/>
-				<key id='True'/>
-				<key id='Unknown'>
-				</key>
-			</values>
-		</tag>
-	</table>
-
-	<table name='XMP::xmp' g0='XMP' g1='XMP-xmp' g2='Image'>
-		<desc lang='en'>XMP xmp</desc>
-		<tag id='Advisory' name='Advisory' type='string' writable='true'/>
-		<tag id='Author' name='Author' type='string' writable='true' g2='Author'/>
-		<tag id='BaseURL' name='BaseURL' type='string' writable='true'/>
-		<tag id='CreateDate' name='CreateDate' type='date' writable='true' g2='Time'/>
-		<tag id='CreatorTool' name='CreatorTool' type='string' writable='true'/>
-		<tag id='Description' name='Description' type='lang-alt' writable='true'/>
-		<tag id='Format' name='Format' type='string' writable='true'/>
-		<tag id='Identifier' name='Identifier' type='string' writable='true'/>
-		<tag id='Keywords' name='Keywords' type='string' writable='true'/>
-		<tag id='Label' name='Label' type='string' writable='true'/>
-		<tag id='MetadataDate' name='MetadataDate' type='date' writable='true' g2='Time'/>
-		<tag id='ModifyDate' name='ModifyDate' type='date' writable='true' g2='Time'/>
-		<tag id='Nickname' name='Nickname' type='string' writable='true'/>
-		<tag id='PageInfo' name='PageInfo' type='struct' writable='true'/>
-		<tag id='PageInfoFormat' name='PageImageFormat' type='string' writable='true'/>
-		<tag id='PageInfoHeight' name='PageImageHeight' type='integer' writable='true'/>
-		<tag id='PageInfoImage' name='PageImage' type='string' writable='true' g2='Preview'/>
-		<tag id='PageInfoPageNumber' name='PageImagePageNumber' type='integer' writable='true'/>
-		<tag id='PageInfoWidth' name='PageImageWidth' type='integer' writable='true'/>
-		<tag id='Rating' name='Rating' type='real' writable='true'/>
-		<tag id='Thumbnails' name='Thumbnails' type='struct' writable='true'/>
-		<tag id='ThumbnailsFormat' name='ThumbnailFormat' type='string' writable='true'/>
-		<tag id='ThumbnailsHeight' name='ThumbnailHeight' type='integer' writable='true'/>
-		<tag id='ThumbnailsImage' name='ThumbnailImage' type='string' writable='true' g2='Preview'/>
-		<tag id='ThumbnailsWidth' name='ThumbnailWidth' type='integer' writable='true'/>
-		<tag id='Title' name='Title' type='lang-alt' writable='true'/>
-	</table>
-
-</taginfo>
-*/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 }
