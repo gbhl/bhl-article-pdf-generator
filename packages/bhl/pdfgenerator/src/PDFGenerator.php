@@ -90,14 +90,14 @@ class MakePDF {
 			}
 			if ($this->verbose) { print "Segment $id has ".count($pages)." pages\n"; }
 			// Get the info for the part from BHL
-			if ($this->verbose) { print "Getting ItemID {$part['ItemID']}\n"; }
+			if ($this->verbose) { print "Getting BookID {$part['ItemID']}\n"; }
 			$item = $this->get_bhl_item($part['ItemID']);
 			if (!$item) { return; }
 			$item = $item['Result'][0]; // deference this for ease of use
 
 			// Get the pages from BHL because maybe I need the file name prefix
 			if ($this->verbose) { print "Getting pages from {$item['SourceIdentifier']} \n"; }
-			$page_details = $this->get_bhl_pages($pages, $item['SourceIdentifier']);
+			$page_details = $this->get_bhl_pages($part['ItemID'], $pages);
 
 			// Get our PDF
 			if ($this->verbose) { print "Getting DJVU file\n"; }
@@ -183,17 +183,18 @@ class MakePDF {
 				$img_aspect_ratio = ($img_width / $img_height);
 
 				$pdf->AddPage();
-				$pdf->SetFont('Helvetica', '', 14);
+				$pdf->SetFont('Helvetica', '', 10);
 				$pdf->SetTextColor(0, 0, 0);
 
 				// Calculate the white space needed on the left and right
 				$h_space = ($max_page_width_mm - ($img_width / $dpm)) / 2; 
 				$v_space = ($max_page_height_mm - ($img_height / $dpm)) / 2; 
 				// Get the lines, Add the text to the page
-				$lines = $djvu->GetPageLines($p['FileNamePrefix'], $this->config->get('image.resize'), $dpm);
+				$prefix = $djvu->GetPagebySequence($p['Sequence']-1);
+				$lines = $djvu->GetPageLines($prefix, $this->config->get('image.resize'), $dpm);
 				foreach ($lines as $l) {
 					$pdf->setXY($l['x'], $l['y']);
-					$pdf->Cell($l['w'], $l['h'], $l['text'], 0, 0, 'FJ'); // FJ = force full justifcation
+					$pdf->Cell($l['w'], $l['h'], $l['text'], 1, 0, 'FJ'); // FJ = force full justifcation
 				}
 
 				$pdf->Image($filename, 0, 0, ($dpm * -25.4));
@@ -428,7 +429,7 @@ class MakePDF {
 			# did we actually get results?
 			if (count($object['Result']) == 0) {
 				unlink($path); # since we had an error, delete this from the cache.
-                                $this->log->error('Item '.$id.' not found.', ['pid' => \posix_getpid()]);
+        $this->log->error('Item '.$id.' not found.', ['pid' => \posix_getpid()]);
 				return null;
 			} else {
 				# looks good, return the object
@@ -444,7 +445,7 @@ class MakePDF {
 		GET BHL PAGES
 		For a given item id get the pages at BHL
 	 */
-	private function get_bhl_pages($pages = array()) {
+	private function get_bhl_pages($item_id, $pages = array()) {
 		
 		if (!$this->bhl_dbh) {
 			try {
@@ -458,8 +459,20 @@ class MakePDF {
 		if (count($pages) > 0) {
 			$placeholders = str_repeat('?, ', count($pages)-1).'?';
 
-			$stmt = $this->bhl_dbh->prepare('SELECT * FROM Page WHERE PageID IN ('.$placeholders.')');
+
+			$stmt = $this->bhl_dbh->prepare(
+			 "SELECT ip.SequenceOrder as Sequence, p.*
+				FROM ItemPage ip 
+				INNER JOIN Page p ON ip.pageID = p.PageID
+				WHERE ip.ItemID = (SELECT b.ItemID FROM Book b WHERE BookID = ?)
+				AND ip.pageid in ({$placeholders}) 
+				ORDER BY ip.sequenceorder"
+			);
+
+			// $stmt = $this->bhl_dbh->prepare('SELECT * FROM Page WHERE PageID IN ('.$placeholders.')');
+			array_unshift($pages, $item_id);
 			$stmt->execute($pages);
+			array_shift($pages);
 			$rows = [];
 			while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
 				$rows['pageid-'.$row['PageID']] = $row;
