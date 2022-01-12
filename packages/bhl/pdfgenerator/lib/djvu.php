@@ -4,6 +4,7 @@ class PhpDjvu {
 
 	public $filename = '';
 	public $pages = [];
+	private $page_sequences = [];
 
 	public function __construct($filename = null) {
 		$this->filename = $filename;
@@ -15,9 +16,16 @@ class PhpDjvu {
 		$this->_init();
 	}
 	
+	public function GetPageBySequence($seq) {
+		if (isset($this->page_sequences[$seq])) {
+			return $this->page_sequences[$seq];
+		}
+		return null;
+	}
+
 	public function GetPageWords($page, $factor = 1, $dpi = 0) {
 		if (!isset($this->pages[$page])) {
-			throw new Exception('Page ID not found.');
+			throw new Exception('Page ID '.$page.' not found.');
 		}
 		if ($dpi == 0) { $dpi = $page['dpi']; }
 		$page = $this->pages[$page];
@@ -40,7 +48,7 @@ class PhpDjvu {
 
 	public function GetPageLines($page, $factor = 1, $dpi = 0) {
 		if (!isset($this->pages[$page])) {
-			throw new Exception('Page ID not found.');
+			throw new Exception('Page ID '.$page.' not found.');
 		}
 		if ($dpi == 0) { $dpi = $page['dpi']; }
 		
@@ -48,6 +56,7 @@ class PhpDjvu {
 		$ret = [];
 		foreach ($page['lines'] as $line) {
 			$ret[] = array(
+				'words'=> $line['words'],
 				'text' => $line['text'],
 				'x'    => $line['x1'] * $factor / $dpi,
 				'y'    => $line['y1'] * $factor / $dpi,
@@ -69,6 +78,7 @@ class PhpDjvu {
 
 	private function _parse_pages() {
 		// Cycle through the pages
+		$seq = 1;
 		foreach ($this->xml->BODY->OBJECT as $page) {
 			// Get the identifying info for the page
 			$page_name = $this->_get_object_param($page, 'PAGE');
@@ -82,8 +92,11 @@ class PhpDjvu {
 			$this->pages[$page_name] = array(
 				'name' => $page_name,
 				'dpi' => $dpi,
-				'lines' => $page_lines
+				'lines' => $page_lines,
+				'sequence' => $seq
 			);
+			$seq++;
+			$this->page_sequences[] = $page_name;
 		}
 	}
 
