@@ -97,12 +97,22 @@ class MakePDF {
 
 			// Get the pages from BHL because maybe I need the file name prefix
 			if ($this->verbose) { print "Getting pages from {$item['SourceIdentifier']} \n"; }
-			$page_details = $this->get_bhl_pages($part['ItemID'], $pages);
+			$page_details = $this->get_bhl_pages($pages);
 
 			// Get our PDF
-			if ($this->verbose) { print "Getting DJVU file\n"; }
-			$djvu_path = $this->get_djvu($item['SourceIdentifier']);
+			if ($this->verbose) { print "Getting DJVU files\n"; }
+			$djvus = $this->get_djvus($page_details);
 
+			foreach ($djvus as $d => $rec) {
+				$djvu = new \PhpDjvu($djvus[$d]['path']);
+				$djvus[$d]['djvu'] = $djvu;
+			}
+			unset($djvu);
+			if (count($djvus) > 1) {
+				$this->log->notice("Segment $id spans multiple Books.", ['pid' => \posix_getpid()]);
+				if ($this->verbose) { print "Segment $id spans multiple Books.\n"; }
+			}
+			
 			// Get our Images
 			if ($this->verbose) { print "Getting Page Images\n"; }
 			$ret = $this->get_page_images($page_details, $item['SourceIdentifier']);
@@ -110,49 +120,45 @@ class MakePDF {
 				exit(1);
 			}
 
-			// Get the DJVU data
-			$djvu = new \PhpDjvu($djvu_path);
-
-			// ------------------------------
-			// Calculate the size of our page
-			// ------------------------------
-			$page_width_mm = 0;
-			$page_height_mm = 0;
-
 			// Size of an A4 page
-			$max_page_width_mm = 210; // millimeters
-			$max_page_height_mm = 297; // millimeters
+			$a4_width_mm = 210; // millimeters
+			$a4_height_mm = 297; // millimeters
 
-			// Calculate the upper limits of the size of all images 
-			$max_img_width_px = 0;
-			$max_img_height_px = 0;
-			foreach ($page_details as $p) {
-				$filename = $this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg';
-				$imagesize = getimagesize($filename);
-				if ($imagesize[0] > $max_img_width_px) { $max_img_width_px = (int)($imagesize[0] * $this->config->get('image.resize')); }
-				if ($imagesize[1] > $max_img_height_px) { $max_img_height_px = (int)($imagesize[1] * $this->config->get('image.resize')); }
+			// Calculate the height and width and aspect ratio of each page.
+			foreach ($page_details as $p => $page) {
+				$imagesize = getimagesize($page_details[$p]['JPGFile']);
+
+				$img_width_px = (int)($imagesize[0] * $this->config->get('image.resize'));
+				$img_height_px = (int)($imagesize[1] * $this->config->get('image.resize'));
+
+				$page_details[$p]['WidthPX'] = $img_width_px; 
+				$page_details[$p]['HeightPX'] = $img_height_px;
+
+				// Decide if we need to fix the height or the width
+				$image_aspect_ratio = $img_height_px / $img_width_px;
+				$a4_aspect_ratio = $a4_height_mm / $a4_width_mm;
+
+				$page_details[$p]['AspectRatio'] = $image_aspect_ratio;
+				$page_details[$p]['A4AspectRatio'] = $a4_aspect_ratio;
+				// Do we fit to the height or the width?
+				if ($image_aspect_ratio > 1) {
+					// Image is narrower than an A4 page, fit to the height
+					$page_details[$p]['DPMM'] = $img_height_px / $a4_height_mm;
+					$page_details[$p]['Orientation'] = 'P';
+				} else {
+					// Image is wider than an A4 page, fit to the width
+					$page_details[$p]['DPMM'] = $img_width_px / $a4_width_mm;
+					$page_details[$p]['Orientation'] = 'L';
+				}
+				// Convert to millimeters
+				$page_details[$p]['WidthMM'] = (int)($img_width_px / $page_details[$p]['DPMM']); 
+				$page_details[$p]['HeightMM'] = (int)($img_height_px / $page_details[$p]['DPMM']);
 			}
-
-			// Decide if we need to fix the height or the width
-			$image_aspect_ratio = $max_img_height_px / $max_img_width_px;
-			$page_aspect_ratio = $max_page_height_mm / $max_page_width_mm;
-
-			// Do we fit to the height or the width?
-			if ($image_aspect_ratio > $page_aspect_ratio) {
-				// Image is narrower than an A4 page, fit to the height
-				$dpm = $max_img_height_px / $max_page_height_mm;
-			} else {
-				// Image is wider than an A4 page, fit to the width
-				$dpm = $max_img_width_px / $max_page_width_mm;
-			}
-			// Convert to millimeters
-			$page_width_mm = $max_img_width_px / $dpm; 
-			$page_height_mm = $max_img_height_px / $dpm;
 
 			// ------------------------------
 			// Generate the PDF
 			// ------------------------------
-			$pdf = new \CustomPdf('P', 'mm', array($page_width_mm, $page_height_mm));
+			$pdf = new \CustomPdf('P', 'mm');
 			$pdf->SetAutoPageBreak(false);
 			$pdf->SetMargins(0, 0);
 
@@ -161,43 +167,32 @@ class MakePDF {
 			foreach ($pages as $pg) {
 				$p = $page_details['pageid-'.$pg];
 				if ($this->verbose) { print chr(13)."Processing Page {$c} of ".count($pages); }
-
-				$filename = $this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg';
-				
 				// Resize the image
-				
+				$xy_factor = 1;
 				if ($this->config->get('image.resize') != 1) {
 					$factor = (int)($this->config->get('image.resize') * 100);
+					$xy_factor = $this->config->get('image.resize');
 					if (!file_exists($this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg')) {
 						$cmd = "convert -resize ".$factor."% "
 							."'".$this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg'."' "
 							."'".$this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg'."'";
 						`$cmd`;
 					}
-					$filename = $this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg';
+					$p['JPGFile'] = $this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg';
 				}
-
-				$imagesize = getimagesize($filename);
-				$img_width = $imagesize[0];
-				$img_height = $imagesize[1];
-				$img_aspect_ratio = ($img_width / $img_height);
-
-				$pdf->AddPage();
+				$pdf->AddPage($p['Orientation'], array($p['WidthMM'], $p['HeightMM']));
 				$pdf->SetFont('Helvetica', '', 10);
 				$pdf->SetTextColor(0, 0, 0);
-
-				// Calculate the white space needed on the left and right
-				$h_space = ($max_page_width_mm - ($img_width / $dpm)) / 2; 
-				$v_space = ($max_page_height_mm - ($img_height / $dpm)) / 2; 
+				
 				// Get the lines, Add the text to the page
-				$prefix = $djvu->GetPagebySequence($p['Sequence']-1);
-				$lines = $djvu->GetPageLines($prefix, $this->config->get('image.resize'), $dpm);
+				$djvu = $djvus[$p['BarCode']]['djvu'];
+				$prefix = $djvu->GetPagebySequence($p['SequenceOrder']-1);
+				$lines = $djvu->GetPageLines($prefix, $this->config->get('image.resize'), $p['DPMM']);
 				foreach ($lines as $l) {
-					$pdf->setXY($l['x'], $l['y']);
-					$pdf->Cell($l['w'], $l['h'], $l['text'], 1, 0, 'FJ'); // FJ = force full justifcation
+					$pdf->setXY($l['x'] * $xy_factor, $l['y'] * $xy_factor);
+					$pdf->Cell($l['w'] * $xy_factor, $l['h'] * $xy_factor, $l['text'], 1, 0, 'FJ'); // FJ = force full justifcation
 				}
-
-				$pdf->Image($filename, 0, 0, ($dpm * -25.4));
+				$pdf->Image($p['JPGFile'], 0, 0, ($p['DPMM'] * -25.4)); 
 				$c++;
 			} // foreach pages
 			print "\n";
@@ -265,26 +260,34 @@ class MakePDF {
 	}
 
 	/*
-		GET DJVU XML
-		Download a PDF from the Internet Archive
+		GET DJVU XML Files
+		Download the DJVU file(s) from the Internet Archive
+		There may be more than one, so let's be extra careful
 	 */
-	private function get_djvu($identifier, $override = false) {		
-		$letter = substr($identifier,0,1);
-		$filename = $identifier.'_djvu.xml';
-		$cache_path = $this->config->get('cache.paths.djvu').'/'.$filename;
-		if (!file_exists($cache_path) || $override) {
-			$djvu = $this->config->get('paths.local_source')."/{$letter}/{$identifier}/{$identifier}_djvu.xml";
-			// Do we have the file locally?
-			if (file_exists($djvu)) {
-				// Do we have it on the Isilon?
-				copy($djvu, $cache_path);
-			} else {
-				// Get it from the internet archive
-				$url = 'https://archive.org/download/'.$identifier.'/'.$filename;
-				file_put_contents($cache_path, file_get_contents($url));			
+	private function get_djvus($pages, $override = false) {
+		$ret = [];
+		foreach ($pages as $p) {
+			$identifier = $p['BarCode'];
+			if (!isset($ret[$identifier])) {
+				$letter = substr($identifier,0,1);
+				$filename = $identifier.'_djvu.xml';
+				$cache_path = $this->config->get('cache.paths.djvu').'/'.$filename;
+				if (!file_exists($cache_path) || $override) {
+					$djvu = $this->config->get('paths.local_source')."/{$letter}/{$identifier}/{$identifier}_djvu.xml";
+					// Do we have the file locally?
+					if (file_exists($djvu)) {
+						// Do we have it on the Isilon?
+						copy($djvu, $cache_path);
+					} else {
+						// Get it from the internet archive
+						$url = 'https://archive.org/download/'.$identifier.'/'.$filename;
+						file_put_contents($cache_path, file_get_contents($url));
+					}
+				}
+				$ret[$identifier] = array('path' => $cache_path);
 			}
 		}
-		return $cache_path;
+		return $ret;
 	}
 
 	/*
@@ -292,7 +295,7 @@ class MakePDF {
 		Given an array of Page IDs, download the images from IA
 		(future versions of this will grab the image from our TAR file)
 	 */
-	private function get_page_images($pages, $identifier, $override = false) {
+	private function get_page_images(&$pages, $identifier, $override = false) {
 
 		$letter = substr($identifier,0,1);
 		$jp2_zip = $this->config->get('paths.local_source')."/{$letter}/{$identifier}/{$identifier}_jp2.zip";
@@ -358,11 +361,21 @@ class MakePDF {
 		} else {
 			// No, fall back to getting it from online
 			if ($this->verbose) { print "Getting page image from Internet Archive\n"; }
-			foreach ($pages as $p) {
-				$path = $this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg';
+			foreach ($pages as $p => $rec) {
+				$bc = $pages[$p]['BarCode'];
+				$prefix = $pages[$p]['FileNamePrefix'];
+
+				$path = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
 				if (!file_exists($path) || $override) {
-					$url = 'https://archive.org'.$p['ExternalURL'];
+					$url = "https://archive.org/download/{$bc}/{$bc}_jp2.zip/{$bc}_jp2%2F{$prefix}.jp2&ext=jpg";
+					if ($this->verbose) { print "Downloading {$prefix}.jp2 as a JPEG\n"; }
 					file_put_contents($path, file_get_contents($url));
+				}
+				$pages[$p]['JPGFile'] = $path;
+				if (exif_imagetype($path) != IMAGETYPE_JPEG) {
+					// Verify this is an image!
+					$this->log->notice("Segment $id: File is not a JPEG: {$prefix}.", ['pid' => \posix_getpid()]);
+					$pages[$p]['JPGFile'] = null;
 				}
 			}
 		}
@@ -445,7 +458,7 @@ class MakePDF {
 		GET BHL PAGES
 		For a given item id get the pages at BHL
 	 */
-	private function get_bhl_pages($item_id, $pages = array()) {
+	private function get_bhl_pages($pages = array()) {
 		
 		if (!$this->bhl_dbh) {
 			try {
@@ -458,21 +471,16 @@ class MakePDF {
 
 		if (count($pages) > 0) {
 			$placeholders = str_repeat('?, ', count($pages)-1).'?';
-
-
 			$stmt = $this->bhl_dbh->prepare(
-			 "SELECT ip.SequenceOrder as Sequence, p.*
-				FROM ItemPage ip 
-				INNER JOIN Page p ON ip.pageID = p.PageID
-				WHERE ip.ItemID = (SELECT b.ItemID FROM Book b WHERE BookID = ?)
-				AND ip.pageid in ({$placeholders}) 
+				"SELECT p.PageID, p.FileNamePrefix, ip.ItemID, ip.SequenceOrder, b.BookID, b.BarCode
+				FROM Page p 
+				INNER JOIN ItemPage ip ON p.PageID = ip.PageID
+				LEFT OUTER JOIN Book b On ip.ItemID = b.ItemID
+				WHERE p.PageID IN ({$placeholders}) 
+				AND b.BookID IS NOT NULL
 				ORDER BY ip.sequenceorder"
 			);
-
-			// $stmt = $this->bhl_dbh->prepare('SELECT * FROM Page WHERE PageID IN ('.$placeholders.')');
-			array_unshift($pages, $item_id);
 			$stmt->execute($pages);
-			array_shift($pages);
 			$rows = [];
 			while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
 				$rows['pageid-'.$row['PageID']] = $row;
