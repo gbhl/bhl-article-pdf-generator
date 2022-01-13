@@ -83,7 +83,6 @@ class MakePDF {
 			}
 
 			// Turn that into a list of pages, because we need the prefix (maybe)
-			if ($this->verbose) { print "Preprocessing pages...\n"; }
 			$pages = [];
 			foreach ($part['Pages'] as $p) {
 				$pages[] = $p['PageID'];
@@ -109,16 +108,13 @@ class MakePDF {
 			}
 			unset($djvu);
 			if (count($djvus) > 1) {
-				$this->log->notice("Segment $id spans multiple Books.", ['pid' => \posix_getpid()]);
-				if ($this->verbose) { print "Segment $id spans multiple Books.\n"; }
+				$this->log->notice("  Segment $id spans multiple Books.", ['pid' => \posix_getpid()]);
+				if ($this->verbose) { print "  WARNING: Segment $id spans multiple Books.\n"; }
 			}
 			
 			// Get our Images
 			if ($this->verbose) { print "Getting Page Images\n"; }
-			$ret = $this->get_page_images($page_details, $item['SourceIdentifier']);
-			if (!$ret) {
-				exit(1);
-			}
+			$this->get_page_images($page_details, $item['SourceIdentifier']);
 
 			// Size of an A4 page
 			$a4_width_mm = 210; // millimeters
@@ -189,12 +185,13 @@ class MakePDF {
 				$prefix = $djvu->GetPagebySequence($p['SequenceOrder']-1);
 				$lines = $djvu->GetPageLines($prefix, $this->config->get('image.resize'), $p['DPMM']);
 				foreach ($lines as $l) {
-					$pdf->setXY($l['x'] * $xy_factor, $l['y'] * $xy_factor);
-					$pdf->Cell($l['w'] * $xy_factor, $l['h'] * $xy_factor, $l['text'], 1, 0, 'FJ'); // FJ = force full justifcation
+					$pdf->setXY($l['x'], $l['y']);
+					$pdf->Cell($l['w'], $l['h'], $l['text'], 1, 0, 'FJ'); // FJ = force full justifcation
 				}
 				$pdf->Image($p['JPGFile'], 0, 0, ($p['DPMM'] * -25.4)); 
 				$c++;
 			} // foreach pages
+			if ($this->verbose) { print chr(13)."Processing Page {$c} of ".count($pages); }
 			print "\n";
 			$pdf->SetCompression(false);
 			$pdf->SetDisplayMode('fullpage','two');
@@ -296,90 +293,110 @@ class MakePDF {
 		(future versions of this will grab the image from our TAR file)
 	 */
 	private function get_page_images(&$pages, $identifier, $override = false) {
+		$c = 1;
+		$total = count($pages);
+		foreach ($pages as $p => $rec) {
+			$bc = $pages[$p]['BarCode'];
+			$prefix = $pages[$p]['FileNamePrefix'];
+			$letter = substr($pages[$p]['BarCode'], 0, 1);
 
-		$letter = substr($identifier,0,1);
-		$jp2_zip = $this->config->get('paths.local_source')."/{$letter}/{$identifier}/{$identifier}_jp2.zip";
-		$jp2_tar = $this->config->get('paths.local_source')."/{$letter}/{$identifier}/{$identifier}_jp2.tar";
-		// Do we have a path and JP2s in the Isilon?
-		if (file_exists($jp2_zip)) {
-			// Get the list of filenames
-			$zip = new \ZipArchive;
-			if (!$zip->open($jp2_zip)) {
-				echo 'Failed to open Zipfile: '.$jp2_zip."\n";
-				return false;
-			} else {
-				$c = 1;
-				$total = count($pages);
-				if ($this->verbose) { print "Getting Page Images from ZIP\n"; }
-				foreach ($pages as $p) {
-					$f_jp2 = $p['FileNamePrefix'].'.jp2';
-					$f_jpg = $p['FileNamePrefix'].'.jpg';
-					$fp = $identifier.'_jp2/'.$f_jp2;
-					if ($this->verbose) { print "Extracting $fp\n"; }
-					if (!file_exists($this->config->get('cache.paths.image').'/'.$f_jpg)) {
+			$jp2_zip = $this->config->get('paths.local_source')."/{$letter}/{$bc}/{$bc}_jp2.zip";
+			$jp2_tar = $this->config->get('paths.local_source')."/{$letter}/{$bc}/{$bc}_jp2.tar";
+
+			if ($this->verbose) { print "  Getting Page Image {$prefix}...\n"; }
+
+			$pages[$p]['JPGFile'] = null;
+
+			// Check the Cache file
+			if (file_exists($this->config->get('cache.paths.image')."/{$prefix}.jpg")) {
+				if ($this->verbose) { print "    Found Page Image in the Cache\n"; }
+				$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
+				$got_file = true;
+			}
+			
+			// Check the local JP2 ZIP file
+			if (!$pages[$p]['JPGFile']) {
+				if (file_exists($jp2_zip)) {
+					// Get the list of filenames
+					$zip = new \ZipArchive;
+					if ($zip->open($jp2_zip)) {
 						// Extract them from the ZIP file
-						if (!$zip->extractTo($this->config->get('cache.paths.image'), $fp)) {
-							echo 'failed to extract file '.$fp."\n";
-						} else {
+						$ret = $zip->extractTo($this->config->get('cache.paths.image'), "{$bc}_jp2/{$prefix}.jp2");
+						if ($ret) {
+							if ($this->verbose) { print "    Found Page Image in JP2 ZIP\n"; }
 							// Convert to JPEG and move to the cache folder
 							$im = new \Imagick ();
-							if ($this->verbose) { print "Converting to $f_jpg\n"; }
-							$im->readImage($this->config->get('cache.paths.image').'/'.$fp);
-							$im->writeImage($this->config->get('cache.paths.image').'/'.$f_jpg);
-						}
-					}
-				}
-				$zip->close();
-			}
-		} elseif (file_exists($jp2_tar)) {
-			$tar = new \Archive_Tar($jp2_tar);
-			if (!$tar) {
-				echo 'Failed to open Tarfile: '.$jp2_tar."\n";
-				return false;
-			} else {
-				$c = 1;
-				$total = count($pages);
-				if ($this->verbose) { print "Getting page image from TAR file\n"; }
-				foreach ($pages as $p) {
-					$f_jp2 = $p['FileNamePrefix'].'.jp2';
-					$f_jpg = $p['FileNamePrefix'].'.jpg';
-					$fp = $identifier.'_jp2/'.$f_jp2;
-					if (!file_exists($this->config->get('cache.paths.image').'/'.$f_jpg)) {
-						// Extract them from the ZIP file
-						if (!$tar->extractList(array($fp), $this->config->get('cache.paths.image'), $identifier.'_jp2/')) {
-							echo 'failed to extract file '.$fp."\n";
+							$im->readImage($this->config->get('cache.paths.image')."/{$bc}_jp2/{$prefix}.jp2");
+							$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
+							$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
 						} else {
-							// Convert to JPEG and move to the cache folder
-							$im = new \Imagick ();
-							$im->readImage($this->config->get('cache.paths.image').'/'.$f_jp2);
-							$im->writeImage($this->config->get('cache.paths.image').'/'.$f_jpg);
+							if ($this->verbose) { print "    $jp2_zip Extraction Failed for {$bc}_jp2/{$prefix}.jp2\n"; }
 						}
+						$zip->close();
+					} else {
+						if ($this->verbose) { print "    $jp2_zip Can't be Opened\n"; }
+					}
+					unset($zip);
+				}
+			}
+
+			// Check the local JP2 TAR file
+			if (!$pages[$p]['JPGFile']) {
+				if (file_exists($jp2_tar)) {
+					$tar = new \Archive_Tar($jp2_tar);
+					if ($tar) {
+						$c = 1;
+						$total = count($pages);
+						foreach ($pages as $p) {
+							$f_jp2 = $p['FileNamePrefix'].'.jp2';
+							$f_jpg = $p['FileNamePrefix'].'.jpg';
+							$fp = "{$p['BarCode']}_jp2/{$f_jp2}";
+							// Extract them from the ZIP file
+							$ret = $tar->extractList(
+								array("{$p['BarCode']}_jp2/{$f_jp2}"), 
+								$this->config->get('cache.paths.image'), 
+								"{$bc}_jp2/"
+							);
+							if ($ret) {
+								if ($this->verbose) { print "    Found Page Image in JP2 TAR\n"; }
+								// Convert to JPEG and move to the cache folder
+								$im = new \Imagick ();
+								$im->readImage($this->config->get('cache.paths.image')."/{$bc}_jp2/{$prefix}.jp2");
+								$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
+								$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
+							}
+						}
+						unset($tar);
 					}
 				}
-				unset($tar);
 			}
-		} else {
-			// No, fall back to getting it from online
-			if ($this->verbose) { print "Getting page image from Internet Archive\n"; }
-			foreach ($pages as $p => $rec) {
-				$bc = $pages[$p]['BarCode'];
-				$prefix = $pages[$p]['FileNamePrefix'];
+			
+			// fall back to getting it from IA's JP2 ZIP file
+			if (!$pages[$p]['JPGFile']) {
+				$url = "https://archive.org/download/{$bc}/{$bc}_jp2.zip/{$bc}_jp2%2F{$prefix}.jp2";
+				file_put_contents($this->config->get('cache.paths.image')."/{$prefix}.jp2", file_get_contents($url));
+				if ($this->verbose) { print "    Found Page Image at Internet Archive\n"; }
+				$im = new \Imagick ();
+				$im->readImage($this->config->get('cache.paths.image')."/{$prefix}.jp2");
+				$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
+				$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
+			}
 
-				$path = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
-				if (!file_exists($path) || $override) {
-					$url = "https://archive.org/download/{$bc}/{$bc}_jp2.zip/{$bc}_jp2%2F{$prefix}.jp2&ext=jpg";
-					if ($this->verbose) { print "Downloading {$prefix}.jp2 as a JPEG\n"; }
-					file_put_contents($path, file_get_contents($url));
-				}
-				$pages[$p]['JPGFile'] = $path;
-				if (exif_imagetype($path) != IMAGETYPE_JPEG) {
-					// Verify this is an image!
-					$this->log->notice("Segment $id: File is not a JPEG: {$prefix}.", ['pid' => \posix_getpid()]);
-					$pages[$p]['JPGFile'] = null;
-				}
+			// This is pretty bad, let's log an error
+			if (!$pages[$p]['JPGFile']) {
+				if ($this->verbose) { print "    ERROR: Could not find file {$prefix}\n"; }
+				$this->log->error("Could not find file {$prefix}", ['pid' => \posix_getpid()]);
 			}
+
+			// Verify this is an image!
+			if (exif_imagetype($pages[$p]['JPGFile']) != IMAGETYPE_JPEG) {
+				if ($this->verbose) { print "    ERROR: Segment $id: File is not a JPEG: {$prefix}.jpg\n"; }
+				$this->log->notice("Segment $id: File is not a JPEG: {$prefix}.jpg", ['pid' => \posix_getpid()]);
+				$pages[$p]['JPGFile'] = null;
+				$got_file = false;
+			}
+
 		}
-		return true;
 	}
 
 	/* 
