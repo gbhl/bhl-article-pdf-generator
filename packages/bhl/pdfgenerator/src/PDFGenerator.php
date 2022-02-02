@@ -79,6 +79,7 @@ class MakePDF {
 			}
 			if (!isset($part['ItemID'])) {
 				if ($this->verbose) { print "Part has no item id!\n"; }
+				$this->log->notice("Segment $id has no item id.", ['pid' => \posix_getpid()]);
 				return false;                    
 			}
 
@@ -122,6 +123,11 @@ class MakePDF {
 
 			// Calculate the height and width and aspect ratio of each page.
 			foreach ($page_details as $p => $page) {
+				if (!$page_details[$p]['JPGFile']) {
+					$this->log->notice("  Segment $id has problems with images. Clearing cache and exiting early. Please try again.", ['pid' => \posix_getpid()]);	
+					if ($this->verbose) { print "  ERROR: Segment $id has problems with images. Tru clearing cache and try again. \n"; }
+					exit(1);
+				}
 				$imagesize = getimagesize($page_details[$p]['JPGFile']);
 
 				$img_width_px = (int)($imagesize[0] * $this->config->get('image.resize'));
@@ -192,7 +198,7 @@ class MakePDF {
 				$c++;
 			} // foreach pages
 			if ($this->verbose) { print chr(13)."Processing Page {$c} of ".count($pages); }
-			print "\n";
+			
 			$pdf->SetCompression(false);
 			$pdf->SetDisplayMode('fullpage','two');
 
@@ -345,29 +351,31 @@ class MakePDF {
 				if (file_exists($jp2_tar)) {
 					$tar = new \Archive_Tar($jp2_tar);
 					if ($tar) {
-						$c = 1;
-						$total = count($pages);
-						foreach ($pages as $p) {
-							$f_jp2 = $p['FileNamePrefix'].'.jp2';
-							$f_jpg = $p['FileNamePrefix'].'.jpg';
-							$fp = "{$p['BarCode']}_jp2/{$f_jp2}";
-							// Extract them from the ZIP file
-							$ret = $tar->extractList(
-								array("{$p['BarCode']}_jp2/{$f_jp2}"), 
-								$this->config->get('cache.paths.image'), 
-								"{$bc}_jp2/"
-							);
-							if ($ret) {
-								if ($this->verbose) { print "    Found Page Image in JP2 TAR\n"; }
-								// Convert to JPEG and move to the cache folder
-								$im = new \Imagick ();
+						$f_jp2 = $pages[$p]['FileNamePrefix'].'.jp2';
+						$f_jpg = $pages[$p]['FileNamePrefix'].'.jpg';
+						$fp = "{$pages[$p]['BarCode']}_jp2/{$f_jp2}";
+						// Extract them from the ZIP file
+						$ret = $tar->extractList(
+							array("{$pages[$p]['BarCode']}_jp2/{$f_jp2}"), 
+							$this->config->get('cache.paths.image'), 
+							"{$bc}_jp2/"
+						);
+						if ($ret) {
+							if ($this->verbose) { print "    Found Page Image in JP2 TAR\n"; }
+							// Convert to JPEG and move to the cache folder
+							$im = new \Imagick ();
+							if (file_exists($this->config->get('cache.paths.image')."/{$bc}_jp2/{$prefix}.jp2")) {
 								$im->readImage($this->config->get('cache.paths.image')."/{$bc}_jp2/{$prefix}.jp2");
-								$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
-								$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
+							} else {
+								$im->readImage($this->config->get('cache.paths.image')."/{$prefix}.jp2");
 							}
+							$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
+							$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
 						}
-						unset($tar);
+					} else {
+						if ($this->verbose) { print "    $jp2_tar Can't be Opened\n"; }
 					}
+					unset($tar);
 				}
 			}
 			
@@ -390,8 +398,8 @@ class MakePDF {
 
 			// Verify this is an image!
 			if (exif_imagetype($pages[$p]['JPGFile']) != IMAGETYPE_JPEG) {
-				if ($this->verbose) { print "    ERROR: Segment $id: File is not a JPEG: {$prefix}.jpg\n"; }
-				$this->log->notice("Segment $id: File is not a JPEG: {$prefix}.jpg", ['pid' => \posix_getpid()]);
+				if ($this->verbose) { print "    ERROR: File is not a JPEG: {$prefix}.jpg\n"; }
+				$this->log->error("File is not a JPEG: {$prefix}.jpg", ['pid' => \posix_getpid()]);
 				$pages[$p]['JPGFile'] = null;
 				$got_file = false;
 			}
@@ -631,10 +639,17 @@ class MakePDF {
 	  Be Nice to the disk. It is your friend.
 	 */
 	private function clean_cache() {
-		`find {$this->config->get('cache.paths.image')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
-		`find {$this->config->get('cache.paths.resize')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
-		`find {$this->config->get('cache.paths.pdf')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
-		`find {$this->config->get('cache.paths.json')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
-		`find {$this->config->get('cache.paths.djvu')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
+return;
+		`find {$this->config->get('cache.paths.image')} -mtime +{$this->config->get('cache.lifetime')} -and type f -delete`;
+		`find {$this->config->get('cache.paths.resize')} -mtime +{$this->config->get('cache.lifetime')}  -and type f -delete`;
+		`find {$this->config->get('cache.paths.pdf')} -mtime +{$this->config->get('cache.lifetime')}  -and type f -delete`;
+		`find {$this->config->get('cache.paths.json')} -mtime +{$this->config->get('cache.lifetime')}  -and type f -delete`;
+		`find {$this->config->get('cache.paths.djvu')} -mtime +{$this->config->get('cache.lifetime')}  -and type f -delete`;
+
+		`find {$this->config->get('cache.paths.image')} -type d -and -empty -delete`;
+		`find {$this->config->get('cache.paths.resize')} -type d -and -empty -delete`;
+		`find {$this->config->get('cache.paths.pdf')} -type d -and -empty -delete`;
+		`find {$this->config->get('cache.paths.json')} -type d -and -empty -delete`;
+		`find {$this->config->get('cache.paths.djvu')} -type d -and -empty -delete`;
 	}
 }
