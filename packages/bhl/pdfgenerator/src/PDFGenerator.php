@@ -151,8 +151,7 @@ class MakePDF {
 			// ------------------------------
 			// Generate the PDF
 			// ------------------------------
-			$pdf = new \tFPDF('P', 'mm');
-//			$pdf = new \CustomPDF('P', 'mm');
+			$pdf = new \CustomPDF('P', 'mm');
 			$pdf->SetAutoPageBreak(false);
 			$pdf->SetMargins(0, 0);
 			$pdf->AddFont('NotoSans','',   'NotoSans-Regular.ttf', true);
@@ -247,8 +246,6 @@ class MakePDF {
 		$pdf->AddPage('P', array($this->a4_width_mm, $this->a4_height_mm));
 		$pdf->SetMargins('20','20');
 		$pdf->Image($image, 30, 30, 150, 0, 'PNG');
-		print_r($item);
-		print_r($part);
 
 		// PREPROCESS THE AUTHORS
 		$authors = [];

@@ -1,7 +1,6 @@
 <?php
-use \Fpdf\Fpdf;
 
-class CustomPdf extends Fpdf {
+class CustomPdf extends \tFPDF {
 	function Cell($w, $h=0, $txt='', $border=0, $ln=0, $align='', $fill=false, $link='') {
     $k=$this->k;
     if($this->y+$h>$this->PageBreakTrigger && !$this->InHeader && !$this->InFooter && $this->AcceptPageBreak()) {
@@ -63,7 +62,38 @@ class CustomPdf extends Fpdf {
 			if($this->ColorFlag) {
 				$s.='q '.$this->TextColor.' ';
 			}
-			$s.=sprintf('BT %.2F %.2F Td (%s) Tj ET',($this->x+$dx)*$k,($this->h-($this->y+.5*$h+.3*$this->FontSize))*$k,$txt);
+			// Make this handle multibyte things properly. Copied from tfpdf.php, line 737
+			if ($this->ws && $this->unifontSubset) {
+				foreach($this->UTF8StringToArray($txt) as $uni)
+					$this->CurrentFont['subset'][$uni] = $uni;
+				$space = $this->_escape($this->UTF8ToUTF16BE(' ', false));
+				$s .= sprintf('BT 0 Tw %.2F %.2F Td [',($this->x+$dx)*$k,($this->h-($this->y+.5*$h+.3*$this->FontSize))*$k);
+				$t = explode(' ',$txt);
+				$numt = count($t);
+				for($i=0;$i<$numt;$i++) {
+					$tx = $t[$i];
+					$tx = '('.$this->_escape($this->UTF8ToUTF16BE($tx, false)).')';
+					$s .= sprintf('%s ',$tx);
+					if (($i+1)<$numt) {
+						$adj = -($this->ws*$this->k)*1000/$this->FontSizePt;
+						$s .= sprintf('%d(%s) ',$adj,$space);
+					}
+				}
+				$s .= '] TJ';
+				$s .= ' ET';
+			}
+			else {
+				if ($this->unifontSubset)
+				{
+					$txt2 = '('.$this->_escape($this->UTF8ToUTF16BE($txt, false)).')';
+					foreach($this->UTF8StringToArray($txt) as $uni)
+						$this->CurrentFont['subset'][$uni] = $uni;
+				}
+				else
+					$txt2='('.$this->_escape($txt).')';
+				$s .= sprintf('BT %.2F %.2F Td %s Tj ET',($this->x+$dx)*$k,($this->h-($this->y+.5*$h+.3*$this->FontSize))*$k,$txt2);
+			}
+
 			if($this->underline) {
 				$s.=' '.$this->_dounderline($this->x+$dx,$this->y+.5*$h+.3*$this->FontSize,$txt);
 			}	
