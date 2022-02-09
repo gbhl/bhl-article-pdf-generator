@@ -192,14 +192,7 @@ class MakePDF {
 			$pdf->SetDisplayMode('fullpage','two');
 
 			// Set the title metadata
-			$title = $part['Genre'].': "'.$part['Title'].'"'
-							.' From '.$part['ContainerTitle']
-							.(isset($part['Volume']) ? ' Volume '.$part['Volume'] : '')
-							.(isset($part['Issue']) ? ', Issue '.$part['Issue'] : '')
-							.(isset($part['Date']) ? ' ('.$part['Date'].')' : '')
-							.(isset($part['PageRange']) ? ', '.$part['PageRange'].'' : '')
-							.'.';
-			$pdf->SetTitle($title);
+			$pdf->SetTitle($this->get_citation($part, $item));
 
 			// Set the Author Metadata
 			$temp = [];
@@ -631,5 +624,75 @@ class MakePDF {
 		`find {$this->config->get('cache.paths.pdf')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
 		`find {$this->config->get('cache.paths.json')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
 		`find {$this->config->get('cache.paths.djvu')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \;`;
+	}
+
+	private function get_citation($part, $item) {
+
+		// PREPROCESS THE AUTHORS
+		$citation = '';
+		$authors = [];
+		$authorstring = '';
+		foreach ($part['Authors'] as $a) {
+			$authors[] = $a['Name'];
+		}
+		if (count($authors) == 1) {
+			$authorstring = $authors[0];
+		} elseif (count($authors) == 2) {
+			$authorstring = "{$authors[0]} and {$authors[1]}";
+		} elseif (count($authors) == 3) {
+			$authorstring = "{$authors[0]}, {$authors[1]}, and {$authors[2]}";
+		} else {
+			$authorstring = "{$authors[0]} et al.";
+		}
+
+		// CITATION
+		//    ... approximately
+		if ($authorstring) { 
+			if (preg_match('/\.$/', $authorstring)) {
+				$citation .= $authorstring.'. '; 
+			} else {
+				$citation .= $authorstring.' '; 
+			}
+				
+		}
+		if (isset($part['Date']) && $part['Date']) { 
+			if (preg_match('/(\d\d\d\d)/', $part['Date'], $matches)) {
+				$part['Date'] = $matches[1];
+			}
+			$citation .= $part['Date'].'. '; }
+		if (isset($part['Title']) && $part['Title']) { $citation .= "\"{$part['Title']}.\" "; }
+		if (isset($part['ContainerTitle']) && $part['ContainerTitle']) { 
+
+			$citation .= $part['ContainerTitle']." "; 
+
+		}
+		// build the volume/series/issue info
+		$vol_series = '';
+		if (isset($part['Volume']) && $part['Volume']) { 
+			$vol_series .= $part['Volume'];
+		}
+		if (isset($part['Issue']) && $part['Issue']) {
+			$vol_series .= "(".$part['Issue'].")";
+		}
+		// Series is not required.
+		// if (isset($part['Series']) && $part['Series']) {
+		// 	if ($vol_series) { $vol_series .= " "; }
+		// 	$vol_series .= "(".$part['Series'].")";
+		// }
+		// did we build something?
+		if ($vol_series) { 
+			$citation .= $vol_series.", "; 
+		}
+		
+		if (isset($part['PageRange']) && $part['PageRange']) { 
+			$part['PageRange'] = preg_replace("/[–-]+/", "–", $part['PageRange']);
+			$citation .= $part['PageRange'].". "; 
+		}
+		// if (isset($part['PublicationDetails']) && $part['PublicationDetails']) { $citation .= $part['PublicationDetails']." "; }
+		if (isset($part['Doi']) && $part['Doi']) { 
+			$citation .= 'https://doi.org/'.$part['Doi']; 
+			$citation .= '.'; 
+		}
+		return $citation;
 	}
 }
