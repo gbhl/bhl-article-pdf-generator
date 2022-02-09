@@ -361,13 +361,32 @@ class MakePDF {
 			
 			// fall back to getting it from IA's JP2 ZIP file
 			if (!$pages[$p]['JPGFile']) {
-				$url = "https://archive.org/download/{$bc}/{$bc}_jp2.zip/{$bc}_jp2%2F{$prefix}.jp2";
-				file_put_contents($this->config->get('cache.paths.image')."/{$prefix}.jp2", file_get_contents($url));
-				if ($this->verbose) { print "    Found Page Image at Internet Archive\n"; }
-				$im = new \Imagick ();
-				$im->readImage($this->config->get('cache.paths.image')."/{$prefix}.jp2");
-				$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
-				$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
+				$url = "https://archive.org/download/{$bc}/{$bc}_jp2.zip/{$bc}_jp2/{$prefix}.jp2";
+				$temp_fn = $this->config->get('cache.paths.image')."/{$prefix}.jp2";
+				@file_put_contents($temp_fn, file_get_contents($url));
+				clearstatcache(); // Stupid, but required for getting filesize() of local paths
+				if (file_exists($temp_fn) && filesize($temp_fn) > 0) {
+					if ($this->verbose) { print " from IA JP2 ZIP\n"; }
+					$im = new \Imagick ();
+					$im->readImage($temp_fn);
+					$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
+					$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
+				}
+			}
+
+			// fall back even more to getting it from IA's JP2 TAR file
+			if (!$pages[$p]['JPGFile']) {
+				$url = "https://archive.org/download/{$bc}/{$bc}_jp2.tar/{$bc}_jp2/{$prefix}.jp2";
+				$temp_fn = $this->config->get('cache.paths.image')."/{$prefix}.jp2";
+				@file_put_contents($temp_fn, file_get_contents($url));
+				clearstatcache(); // Stupid, but required for getting filesize() of local paths
+				if (file_exists($temp_fn) && filesize($temp_fn) > 0) {
+					if ($this->verbose) { print " from IA JP2 TAR\n"; }
+					$im = new \Imagick ();
+					$im->readImage($temp_fn);
+					$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
+					$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
+				}
 			}
 
 			// This is pretty bad, let's log an error
@@ -383,7 +402,7 @@ class MakePDF {
 				$pages[$p]['JPGFile'] = null;
 				$got_file = false;
 			}
-
+			$c++;
 		}
 	}
 
