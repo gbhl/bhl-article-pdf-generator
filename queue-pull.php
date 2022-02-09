@@ -4,6 +4,13 @@ require_once __DIR__ . '/vendor/autoload.php';
 require_once './packages/bhl/pdfgenerator/src/PDFGenerator.php';
 require_once './packages/bhl/pdfgenerator/src/ForceJustify.php';
 
+# Only one process allowed
+$ret = `ps -C php -f | fgrep queue_pull.php | wc -l`;
+if ((int)$ret > 0) {
+	exit;
+}
+
+
 use PDODb;
 use Noodlehaus\Config;
 use Noodlehaus\Parser\Json;
@@ -30,10 +37,17 @@ $process_messsage = function($msg){
 	global $pdfgen;
 	global $channel;
 	global $config;
+
+#	$message = explode('|', trim($msg->body));
+#	$id = $message[2];
+#	print "Generating pdf for ID $id\n";
+#	$pdfgen->generate_article_pdf($id);
+#	$msg->ack();
 	
 	$body = explode('|', trim($msg->body));
 	if (!isset($body[3])) { $body[3] = ''; }
 	$id = $body[2];
+	print "Generating pdf for ID $id\n";
 	try {
 		// Generate the PDF
 		$pdfgen->generate_article_pdf($id, ($body[3] == 'page'), ($body[3] == 'metadata'));
@@ -47,9 +61,8 @@ $process_messsage = function($msg){
 
 $channel->basic_consume($config->get('mq.queue_name'), '', false, false, false, false, $process_messsage);
 
-$count = 0;
+$count = 1;
 while (count($channel->callbacks)) {
-	print "Sleeping 3 sec...\n";
 	sleep(1);
 	$channel->wait();
 	if ($count++ >= $limit) { break; }
@@ -57,3 +70,4 @@ while (count($channel->callbacks)) {
 
 $channel->close();
 $connection->close();
+

@@ -82,6 +82,7 @@ class MakePDF {
 			}
 			if (!isset($part['ItemID'])) {
 				if ($this->verbose) { print "Part has no item id!\n"; }
+				$this->log->notice("Segment $id has no item id.", ['pid' => \posix_getpid()]);
 				return false;                    
 			}
 
@@ -119,6 +120,11 @@ class MakePDF {
 
 			// Calculate the height and width and aspect ratio of each page.
 			foreach ($page_details as $p => $page) {
+				if (!$page_details[$p]['JPGFile']) {
+					$this->log->notice("  Segment $id has problems with images. Clearing cache and exiting early. Please try again.", ['pid' => \posix_getpid()]);	
+					if ($this->verbose) { print "  ERROR: Segment $id has problems with images. Tru clearing cache and try again. \n"; }
+					exit(1);
+				}
 				$imagesize = getimagesize($page_details[$p]['JPGFile']);
 
 				$img_width_px = (int)($imagesize[0] * $this->config->get('image.resize'));
