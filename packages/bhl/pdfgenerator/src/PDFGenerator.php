@@ -554,7 +554,7 @@ class MakePDF {
 		}
 
 		// Title
-		$metadata[] = "-XMP:Title=".escapeshellarg($part['Title']);
+		$metadata[] = "-XMP:Title=".escapeshellarg($this->get_citation($part, $item));
 		
 		// Authors
 		foreach ($part['Authors'] as $a) {
@@ -592,13 +592,6 @@ class MakePDF {
 				$metadata[] = "-XMP:RightsOwner=".escapeshellarg($item['RightsHolder']);
 				$metadata[] = "-XMP:License=".escapeshellarg($item['LicenseUrl']);
 			}
-			if (isset($part['RelatedParts'])) {
-				if (is_array($part['RelatedParts'])) {
-					foreach ($part['RelatedParts'] as $r) {
-						$metadata[] = "-XMP:Relation=".escapeshellarg('https://www.biodiversitylibrary.org/part/'.$r['PartID']);
-					}				
-				}
-			}
 			if (isset($part['Names'])) {
 				if (is_array($part['Names'])) {
 					foreach ($part['Names'] as $n) {
@@ -623,15 +616,32 @@ class MakePDF {
 				}
 			}
 		}
-		
+
+		$page_ids = [];
+		foreach ($part['Pages'] as $p) {
+			$page_ids[] = $p['PageID'];
+			$page_text = '';
+			if (isset($p['PageNumbers']) && $p['PageNumbers']) {
+				foreach ($p['PageNumbers'] as $pg) {
+					if (isset($pg['Number']) && $pg['Number']) {
+						$page_text .= $pg['Number'];
+					}
+				}
+			}
+			if ($page_text) {
+				$metadata[] = "-XMP:PageInfo+=".escapeshellarg("{PageNumber={$page_text}}");
+			}
+		}
+		// Save the Page IDs for future use
+		$metadata[] = "-XMP:Notes=".escapeshellarg("BHL PageIDs: ".implode(',', $page_ids));
 		// TODO Handle different Genres
 
 		if (isset($part['Date'])) {
 			$metadata[] = "-XMP:Date=".escapeshellarg($part['Date']);
 		}
 
-		$cmd = '/usr/local/bin/exiftool -overwrite_original '.implode(' ', $metadata).' '.$pdf;
-		`$cmd`;
+		$cmd = '/usr/local/bin/exiftool -json -overwrite_original '.implode(' ', $metadata).' '.$pdf.' 2>&1';
+		exec($cmd);
 	}	
 
 	/*
