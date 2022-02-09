@@ -9,6 +9,8 @@ use Monolog\Formatter\LineFormatter;
 
 require_once(dirname(__FILE__) . '/../lib/djvu.php');
 
+define("_SYSTEM_TTFONTS", dirname(__FILE__).'/../assets/noto-sans/');
+
 /* ********************************************
 	Libraries for generating article PDFs for BHL 
 
@@ -23,6 +25,10 @@ class MakePDF {
 	private $config;
 	private $log;
 	private $verbose = false;
+
+	// Size of an A4 page
+	private $a4_width_mm = 210; // millimeters
+	private $a4_height_mm = 297; // millimeters
 
 	/*
 		CONSTRUCTOR
@@ -111,10 +117,6 @@ class MakePDF {
 			if ($this->verbose) { print "Getting Page Images\n"; }
 			$this->get_page_images($page_details, $item['SourceIdentifier']);
 
-			// Size of an A4 page
-			$a4_width_mm = 210; // millimeters
-			$a4_height_mm = 297; // millimeters
-
 			// Calculate the height and width and aspect ratio of each page.
 			foreach ($page_details as $p => $page) {
 				$imagesize = getimagesize($page_details[$p]['JPGFile']);
@@ -127,18 +129,18 @@ class MakePDF {
 
 				// Decide if we need to fix the height or the width
 				$image_aspect_ratio = $img_height_px / $img_width_px;
-				$a4_aspect_ratio = $a4_height_mm / $a4_width_mm;
+				$a4_aspect_ratio = $this->a4_height_mm / $this->a4_width_mm;
 
 				$page_details[$p]['AspectRatio'] = $image_aspect_ratio;
 				$page_details[$p]['A4AspectRatio'] = $a4_aspect_ratio;
 				// Do we fit to the height or the width?
 				if ($image_aspect_ratio > 1) {
 					// Image is narrower than an A4 page, fit to the height
-					$page_details[$p]['DPMM'] = $img_height_px / $a4_height_mm;
+					$page_details[$p]['DPMM'] = $img_height_px / $this->a4_height_mm;
 					$page_details[$p]['Orientation'] = 'P';
 				} else {
 					// Image is wider than an A4 page, fit to the width
-					$page_details[$p]['DPMM'] = $img_width_px / $a4_width_mm;
+					$page_details[$p]['DPMM'] = $img_width_px / $this->a4_width_mm;
 					$page_details[$p]['Orientation'] = 'L';
 				}
 				// Convert to millimeters
@@ -149,9 +151,14 @@ class MakePDF {
 			// ------------------------------
 			// Generate the PDF
 			// ------------------------------
-			$pdf = new \CustomPdf('P', 'mm');
+			$pdf = new \tFPDF('P', 'mm');
+//			$pdf = new \CustomPDF('P', 'mm');
 			$pdf->SetAutoPageBreak(false);
 			$pdf->SetMargins(0, 0);
+			$pdf->AddFont('NotoSans','',   'NotoSans-Regular.ttf', true);
+			$pdf->AddFont('NotoSans','I',  'NotoSans-Italic.ttf', true);
+			$pdf->AddFont('NotoSans','B',  'NotoSans-Bold.ttf', true);
+			$pdf->AddFont('NotoSans','IB', 'NotoSans-BoldItalic.ttf', true);
 
 			$params = [];
 			$c = 0;
@@ -172,7 +179,7 @@ class MakePDF {
 					$p['JPGFile'] = $this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg';
 				}
 				$pdf->AddPage($p['Orientation'], array($p['WidthMM'], $p['HeightMM']));
-				$pdf->SetFont('Helvetica', '', 10);
+				$pdf->SetFont('NotoSans', '', 10);
 				$pdf->SetTextColor(0, 0, 0);
 				
 				// Get the lines, Add the text to the page
@@ -193,6 +200,9 @@ class MakePDF {
 
 			// Set the title metadata
 			$pdf->SetTitle($this->get_citation($part, $item));
+
+			// Add the "cover" page...at the end
+			$this->add_cover_page($pdf, $part, $item);
 
 			// Set the Author Metadata
 			$temp = [];
@@ -226,6 +236,210 @@ class MakePDF {
 			throw new \Exception("Exception while processing segment $id: ".$e->getMessage());
 			return;
 		}
+
+	}
+
+	/*
+	 *
+	 */
+	 private function add_cover_page($pdf, $part, $item) {
+		$image = dirname(__FILE__).'/../assets/BHL-logo.png';
+		$pdf->AddPage('P', array($this->a4_width_mm, $this->a4_height_mm));
+		$pdf->SetMargins('20','20');
+		$pdf->Image($image, 30, 30, 150, 0, 'PNG');
+		print_r($item);
+		print_r($part);
+
+		// PREPROCESS THE AUTHORS
+		$authors = [];
+		$authorstring = '';
+		foreach ($part['Authors'] as $a) {
+			$authors[] = preg_replace('/,\s?$/', '', $a['Name']);
+		}
+		if (count($authors) == 1) {
+			$authorstring = $authors[0];
+		} elseif (count($authors) == 2) {
+			$authorstring = "{$authors[0]} and {$authors[1]}";
+		} elseif (count($authors) == 3) {
+			$authorstring = "{$authors[0]}, {$authors[1]}, and {$authors[2]}";
+		} else {
+			$authorstring = "{$authors[0]} et al.";
+		}
+
+		$pdf->setY('100');
+		$line_height = 7;
+		$font_size = 13;
+
+		// CITATION
+		//    ... approximately
+		$pdf->SetFont('NotoSans', '', $font_size); 
+		if ($authorstring) { 
+			if (preg_match('/\.$/', $authorstring)) {
+				$pdf->Write($line_height, $authorstring.' '); 
+			} else {
+				$pdf->Write($line_height, $authorstring.'. '); 
+			}
+		}
+		if (isset($part['Date']) && $part['Date']) { 
+			$matches = [];
+			if (preg_match('/(\d\d\d\d)/', $part['Date'], $matches)) {
+				$part['Date'] = $matches[1];
+			}
+			$pdf->Write($line_height, $part['Date'].'. '); 
+		}
+		if (isset($part['Title']) && $part['Title']) { $pdf->Write($line_height, "\"{$part['Title']}.\" "); }
+		if (isset($part['ContainerTitle']) && $part['ContainerTitle']) { 
+			$pdf->SetFont('NotoSans', 'I', $font_size); 
+			$pdf->Write($line_height, $part['ContainerTitle']." "); 
+			$pdf->SetFont('NotoSans', '', $font_size); 
+		}
+		// build the volume/series/issue info
+		$vol_series = '';
+		if (isset($part['Volume']) && $part['Volume']) { 
+			$vol_series .= $part['Volume'];
+		}
+		if (isset($part['Issue']) && $part['Issue']) {
+			$vol_series .= "(".$part['Issue'].")";
+		}
+		// Series is not required.
+		// if (isset($part['Series']) && $part['Series']) {
+		// 	if ($vol_series) { $vol_series .= " "; }
+		// 	$vol_series .= "(".$part['Series'].")";
+		// }
+		// did we build something?
+		if ($vol_series) { 
+			$pdf->Write($line_height, $vol_series.", "); 
+		}
+		
+		if (isset($part['PageRange']) && $part['PageRange']) { 
+			$part['PageRange'] = preg_replace("/[–-]+/", "–", $part['PageRange']);
+			$pdf->Write($line_height, $part['PageRange'].". "); 
+		}
+		// if (isset($part['PublicationDetails']) && $part['PublicationDetails']) { $pdf->Write($line_height, $part['PublicationDetails']." "); }
+		if (isset($part['Doi']) && $part['Doi']) { 
+			$pdf->SetFont('NotoSans', 'U', $font_size); 
+			$pdf->SetTextColor(76, 103, 155);
+			$pdf->Write($line_height, 'https://doi.org/'.$part['Doi'], 'https://doi.org/'.$part['Doi']); 
+			$pdf->SetTextColor(0, 0, 0);
+			$pdf->SetFont('NotoSans', '', $font_size); 
+			$pdf->Write($line_height, '.'); 
+		}
+
+		$pdf->Ln($line_height, '');
+		$pdf->Ln($line_height, '');
+
+		$line_height = 6;
+		$font_size = 11;
+		
+		// URLS 
+		$pdf->SetFont('NotoSans', 'B', $font_size);
+		$pdf->SetTextColor(0,0,0);
+		$pdf->Write($line_height, 'View This Item Online: ');
+
+		$pdf->SetFont('NotoSans', 'U', $font_size);
+		$pdf->SetTextColor(76, 103, 155);
+		$pdf->Write($line_height, 'https://www.biodiversitylibrary.org/item/'.$part['ItemID'], 'https://www.biodiversitylibrary.org/item/'.$part['ItemID']);
+		$pdf->Ln($line_height, '');
+		if (isset($part['Doi']) && $part['Doi']) {
+			$pdf->SetFont('NotoSans', 'B', $font_size);
+			$pdf->SetTextColor(0,0,0);
+			$pdf->Write($line_height, 'DOI: ');
+			$pdf->SetTextColor(76, 103, 155);
+			$pdf->SetFont('NotoSans', 'U', $font_size);
+			$pdf->Write($line_height, 'https://doi.org/'.$part['Doi'], 'https://doi.org/'.$part['Doi']); 
+			$pdf->Ln($line_height, '');
+		}
+		$pdf->SetFont('NotoSans', 'B', $font_size);
+		$pdf->SetTextColor(0,0,0);
+		$pdf->Write($line_height, 'Permalink: ');
+		$pdf->SetFont('NotoSans', 'U', $font_size);
+		$pdf->SetTextColor(76, 103, 155);
+		$pdf->Write($line_height, 'https://www.biodiversitylibrary.org/partpdf/'.$part['PartID'], 'https://www.biodiversitylibrary.org/partpdf/'.$part['PartID']);
+		$pdf->Ln($line_height, '');
+		$pdf->Ln($line_height, '');
+
+		$pdf->SetTextColor(0, 0, 0);
+
+		$line_height = 6; 
+		$font_size = 11;
+		
+		// RIGHTS STATUS
+		if (isset($item['HoldingInstitution']) && $item['HoldingInstitution']) {
+			$pdf->SetFont('NotoSans', 'B', $font_size);
+			$pdf->Write($line_height, 'Holding Institution ');
+			$pdf->Ln($line_height, '');
+			$pdf->SetFont('NotoSans', '', $font_size);
+			$pdf->Write($line_height, $item['HoldingInstitution']);
+			$pdf->Ln($line_height, '');
+			$pdf->Ln($line_height, '');
+	  }
+		if (isset($item['Sponsor']) && $item['Sponsor']) {
+			$pdf->SetFont('NotoSans', 'B', $font_size);
+			$pdf->Write($line_height, 'Sponsored by ');
+			$pdf->Ln($line_height, '');
+			$pdf->SetFont('NotoSans', '', $font_size);
+			$pdf->Write($line_height, $item['Sponsor']);
+			$pdf->Ln($line_height, '');
+			$pdf->Ln($line_height, '');
+		}
+
+		// RIGHTS STATUS
+		$pdf->SetTextColor(0,0,0);
+		$pdf->SetFont('NotoSans', 'B', $font_size);
+		$pdf->Write($line_height, 'Copyright & Reuse ');
+		$pdf->Ln($line_height, '');
+		$pdf->SetFont('NotoSans', '', $font_size);
+		$pdf->Write($line_height, 'Copyright Status: '.$part['RightsStatus']);
+		$pdf->Ln($line_height, '');
+		if (isset($item['RightsHolder']) && $item['RightsHolder']) {
+			$pdf->SetTextColor(0, 0, 0); // Black
+			$pdf->SetFont('NotoSans', '', $font_size); // Regular Font
+			$pdf->Write($line_height, 'Rights Holder: '.$item['RightsHolder']);
+			$pdf->Ln($line_height, '');
+		}
+		if (isset($part['LicenseUrl']) && $part['LicenseUrl']) {
+			$pdf->Write($line_height, 'License: ');
+			$pdf->SetFont('NotoSans', 'U', $font_size); // Underline Regular
+			$pdf->SetTextColor(76, 103, 155); // Blue
+			$pdf->Write($line_height, $part['LicenseUrl'], $part['LicenseUrl']);
+			$pdf->Ln($line_height, '');
+		}
+		if (isset($item['Rights']) && $item['Rights']) {
+			$pdf->SetTextColor(0, 0, 0); // Black
+			$pdf->SetFont('NotoSans', '', $font_size); // Regular Font
+			$pdf->Write($line_height, 'Rights: ');
+			$pdf->SetFont('NotoSans', 'U', $font_size); // Underline Regular
+			$pdf->SetTextColor(76, 103, 155); // Blue
+			$pdf->Write($line_height, $item['Rights'], $item['Rights']);
+			$pdf->Ln($line_height, '');
+		}
+		$pdf->Ln($line_height, '');
+		// PDF CREATED DATE
+		$font_size = 11;
+		$line_height = 5;
+
+		$pdf->Ln($line_height, '');
+		$pdf->SetTextColor(0, 0, 0);
+		$pdf->SetFont('NotoSans', '', $font_size);
+		$pdf->Write($line_height, 'This document was created from content at the ');
+		$pdf->SetFont('NotoSans', 'B', $font_size);
+		$pdf->Write($line_height, 'Biodiversity Heritage Library');
+		$pdf->SetFont('NotoSans', '', $font_size);
+		$pdf->Write($line_height, ', the world\'s largest open access digital library for biodiversity literature and archives. ');
+		$pdf->Write($line_height, 'Visit BHL at ');
+		$pdf->SetTextColor(76, 103, 155);
+		$pdf->Write($line_height, 'https://www.biodiversitylibrary.org', 'https://www.biodiversitylibrary.org');
+		$pdf->SetTextColor(0,0,0);
+		$pdf->Write($line_height, '.');
+		
+
+		$pdf->setY('270');
+		$font_size = 8;
+		$line_height = 5;
+		date_default_timezone_set('UTC');
+		$pdf->SetFont('NotoSans', '', $font_size);
+		$pdf->Write($line_height, 'This file was generated '.date('j F Y \a\t H:i T'));
+		$pdf->Ln($line_height, '');
 
 	}
 
