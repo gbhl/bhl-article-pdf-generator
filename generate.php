@@ -1,4 +1,3 @@
-#!/opt/rh/rh-php73/root/usr/bin/php
 <?php
 
 // ******************************************
@@ -35,4 +34,4 @@ if (!$id) {
 	print "ERROR: ID is required\n";
 	die;
 }
-$pdfgen->generate_article_pdf($id);
+$pdfgen->generate_article_pdf($id, true, true);

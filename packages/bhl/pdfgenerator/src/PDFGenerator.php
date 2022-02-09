@@ -47,7 +47,7 @@ class MakePDF {
 		GENERATE ARTICLE PDF
 		Main action, do all the things!
 	 */
-	function generate_article_pdf($id) {
+	function generate_article_pdf($id, $metadata = true, $page = true) {
 		try {
 			$this->log->notice("Processing segment $id...", ['pid' => \posix_getpid()]);
 			if ($this->verbose) { print "Processing segment $id\n"; }

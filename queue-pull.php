@@ -1,4 +1,3 @@
-#!/opt/rh/rh-php73/root/usr/bin/php
 <?php
 namespace QueueWatcher;
 require_once __DIR__ . '/vendor/autoload.php';
@@ -13,7 +12,7 @@ use BHL\PDFGenerator\MakePDF;
 
 $config = new Config('config/config.json');
 $pdfgen = new MakePDF($config);
-$limit = 5;
+$limit = 500000;
 
 ini_set("memory_limit", $config->get('max_memory'));
 
@@ -33,10 +32,11 @@ $process_messsage = function($msg){
 	global $config;
 	
 	$body = explode('|', trim($msg->body));
+	if (!isset($body[3])) { $body[3] = ''; }
 	$id = $body[2];
 	try {
 		// Generate the PDF
-		$pdfgen->generate_article_pdf($id);
+		$pdfgen->generate_article_pdf($id, ($body[3] == 'page'), ($body[3] == 'metadata'));
 		$msg->ack();
 	} catch (\Exception $e) {
 		# Publish the ID to the error queue. THIS IS A HACK. I think.
