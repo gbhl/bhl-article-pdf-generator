@@ -32,7 +32,6 @@ class MakePDF {
 		$this->config = $config;
 		$this->validate_config();
 		$this->verbose = $verbose;
-		if ($this->verbose) { print "Creating PDF generator.\n"; }
 
 		// create a log channel
 		$dateFormat = "Y-m-d H:i:s T";
@@ -42,7 +41,6 @@ class MakePDF {
 		$stream->setFormatter($formatter);
 		$this->log = new Logger('makepdf');
 		$this->log->pushHandler($stream);
-		if ($this->verbose) { print "Logger Created\n"; }
 	}
 	
 	/*
@@ -61,7 +59,6 @@ class MakePDF {
 				mkdir($this->config->get('paths.output').'/'.$L1.'/'.$L2, 0755, true);
 			}
 
-			if ($this->verbose) { print "Cleaning the cache...\n"; }
 			$this->clean_cache();
 
 			// Get the basic segment info
@@ -87,7 +84,6 @@ class MakePDF {
 			foreach ($part['Pages'] as $p) {
 				$pages[] = $p['PageID'];
 			}
-			if ($this->verbose) { print "Segment $id has ".count($pages)." pages\n"; }
 			// Get the info for the part from BHL
 			if ($this->verbose) { print "Getting BookID {$part['ItemID']}\n"; }
 			$item = $this->get_bhl_item($part['ItemID']);
@@ -95,11 +91,10 @@ class MakePDF {
 			$item = $item['Result'][0]; // deference this for ease of use
 
 			// Get the pages from BHL because maybe I need the file name prefix
-			if ($this->verbose) { print "Getting pages from {$item['SourceIdentifier']} \n"; }
 			$page_details = $this->get_bhl_pages($pages);
 
 			// Get our PDF
-			if ($this->verbose) { print "Getting DJVU files\n"; }
+			if ($this->verbose) { print "Getting DJVU file\n"; }
 			$djvus = $this->get_djvus($page_details);
 
 			foreach ($djvus as $d => $rec) {
@@ -162,7 +157,7 @@ class MakePDF {
 			$c = 0;
 			foreach ($pages as $pg) {
 				$p = $page_details['pageid-'.$pg];
-				if ($this->verbose) { print chr(13)."Processing Page {$c} of ".count($pages); }
+				if ($this->verbose) { print chr(13)."Adding Page {$c} of ".count($pages)." to PDF"; }
 				// Resize the image
 				$xy_factor = 1;
 				if ($this->config->get('image.resize') != 1) {
@@ -191,7 +186,7 @@ class MakePDF {
 				$pdf->Image($p['JPGFile'], 0, 0, ($p['DPMM'] * -25.4)); 
 				$c++;
 			} // foreach pages
-			if ($this->verbose) { print chr(13)."Processing Page {$c} of ".count($pages); }
+			if ($this->verbose) { print chr(13)."Adding Page {$c} of ".count($pages)." to PDF"; }
 			print "\n";
 			$pdf->SetCompression(false);
 			$pdf->SetDisplayMode('fullpage','two');
@@ -303,13 +298,13 @@ class MakePDF {
 			$jp2_zip = $this->config->get('paths.local_source')."/{$letter}/{$bc}/{$bc}_jp2.zip";
 			$jp2_tar = $this->config->get('paths.local_source')."/{$letter}/{$bc}/{$bc}_jp2.tar";
 
-			if ($this->verbose) { print "  Getting Page Image {$prefix}...\n"; }
+			if ($this->verbose) { print "  {$prefix} ($c/$total)..."; }
 
 			$pages[$p]['JPGFile'] = null;
 
 			// Check the Cache file
 			if (file_exists($this->config->get('cache.paths.image')."/{$prefix}.jpg")) {
-				if ($this->verbose) { print "    Found Page Image in the Cache\n"; }
+				if ($this->verbose) { print " from Cache.\n"; }
 				$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
 				$got_file = true;
 			}
@@ -323,7 +318,7 @@ class MakePDF {
 						// Extract them from the ZIP file
 						$ret = $zip->extractTo($this->config->get('cache.paths.image'), "{$bc}_jp2/{$prefix}.jp2");
 						if ($ret) {
-							if ($this->verbose) { print "    Found Page Image in JP2 ZIP\n"; }
+							if ($this->verbose) { print " from JP2 ZIP\n"; }
 							// Convert to JPEG and move to the cache folder
 							$im = new \Imagick ();
 							$im->readImage($this->config->get('cache.paths.image')."/{$bc}_jp2/{$prefix}.jp2");
@@ -358,7 +353,7 @@ class MakePDF {
 								"{$bc}_jp2/"
 							);
 							if ($ret) {
-								if ($this->verbose) { print "    Found Page Image in JP2 TAR\n"; }
+								if ($this->verbose) { print " from JP2 TAR\n"; }
 								// Convert to JPEG and move to the cache folder
 								$im = new \Imagick ();
 								$im->readImage($this->config->get('cache.paths.image')."/{$bc}_jp2/{$prefix}.jp2");
