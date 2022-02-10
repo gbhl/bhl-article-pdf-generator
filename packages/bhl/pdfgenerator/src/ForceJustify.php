@@ -58,7 +58,7 @@ class CustomPdf extends \tFPDF {
 			} else {
 				$dx=$this->cMargin;
 			}		
-			$txt=str_replace(')','\\)',str_replace('(','\\(',str_replace('\\','\\\\',$txt)));
+	//		$txt=str_replace(')','\\)',str_replace('(','\\(',str_replace('\\','\\\\',$txt)));
 			if($this->ColorFlag) {
 				$s.='q '.$this->TextColor.' ';
 			}
