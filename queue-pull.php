@@ -4,13 +4,6 @@ require_once __DIR__ . '/vendor/autoload.php';
 require_once './packages/bhl/pdfgenerator/src/PDFGenerator.php';
 require_once './packages/bhl/pdfgenerator/src/ForceJustify.php';
 
-# Only one process allowed
-$ret = `ps -C php -f | fgrep queue_pull.php | wc -l`;
-if ((int)$ret > 0) {
-	exit;
-}
-
-
 use PDODb;
 use Noodlehaus\Config;
 use Noodlehaus\Parser\Json;
@@ -19,7 +12,7 @@ use BHL\PDFGenerator\MakePDF;
 
 $config = new Config('config/config.json');
 $pdfgen = new MakePDF($config);
-$limit = 500000;
+$limit = 1000;
 
 ini_set("memory_limit", $config->get('max_memory'));
 
