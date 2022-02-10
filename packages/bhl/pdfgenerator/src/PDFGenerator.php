@@ -290,7 +290,13 @@ class MakePDF {
 			}
 			$pdf->Write($line_height, $part['Date'].'. '); 
 		}
-		if (isset($part['Title']) && $part['Title']) { $pdf->Write($line_height, "\"{$part['Title']}.\" "); }
+		if (isset($part['Title']) && $part['Title']) { 
+			if (preg_match('/[\'?,.:;]$/', $part['Title'])) {
+				$pdf->Write($line_height, "\"{$part['Title']}\" ");
+			} else {
+				$pdf->Write($line_height, "\"{$part['Title']}.\" ");
+			}
+		}
 		if (isset($part['ContainerTitle']) && $part['ContainerTitle']) { 
 			$pdf->SetFont('NotoSans', 'I', $font_size); 
 			$pdf->Write($line_height, $part['ContainerTitle']." "); 
