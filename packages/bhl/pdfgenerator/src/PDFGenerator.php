@@ -265,7 +265,7 @@ class MakePDF {
 			$authorstring = "{$authors[0]} and {$authors[1]}";
 		} elseif (count($authors) == 3) {
 			$authorstring = "{$authors[0]}, {$authors[1]}, and {$authors[2]}";
-		} else {
+		} elseif (count($authors) != 0) {
 			$authorstring = "{$authors[0]} et al.";
 		}
 
@@ -893,7 +893,7 @@ class MakePDF {
 			$authorstring = "{$authors[0]} and {$authors[1]}";
 		} elseif (count($authors) == 3) {
 			$authorstring = "{$authors[0]}, {$authors[1]}, and {$authors[2]}";
-		} else {
+		} elseif (count($authors) != 0) {
 			$authorstring = "{$authors[0]} et al.";
 		}
 
