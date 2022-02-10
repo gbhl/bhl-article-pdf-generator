@@ -10,11 +10,8 @@
 $max = 4;
 $child_script = "queue-pull.php";
 
-
-$command =  PHP_BINARY." {$child_script} > /dev/null 2>&1 &";
-
 function count_children($child_script) {
-	$ret =  `ps awx | fgrep {$child_script} | fgrep -v fgrep | wc -l`;
+	$ret =  `ps awx | fgrep {$child_script} | fgrep -v grep | wc -l`;
 	return (int)trim($ret);
 }
 
@@ -28,6 +25,7 @@ while (true) {
 		$dt = new DateTime();
 		$dt = $dt->format('Y-m-d H:i:s');
 		fwrite($fh, "[{$dt}] Parent spawning child...\n");
+		$command =  PHP_BINARY." {$child_script} > log/queue-pull-".time().".txt 2>&1 &";
 		`$command`;
 	}
 	sleep(5);
