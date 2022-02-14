@@ -55,8 +55,6 @@ class MakePDF {
 	 */
 	function generate_article_pdf($id, $metadata = true, $page = true) {
 		try {
-			$this->log->notice("Processing segment $id...", ['pid' => \posix_getpid()]);
-			if ($this->verbose) { print "Processing segment $id\n"; }
 			// Set our filename
 			$L1 = substr((string)$id, 0, 1);
 			$L2 = substr((string)$id, 1, 1);
@@ -91,6 +89,7 @@ class MakePDF {
 			foreach ($part['Pages'] as $p) {
 				$pages[] = $p['PageID'];
 			}
+			$this->log->notice("Processing segment $id (".count($pages)." pages)...", ['pid' => \posix_getpid()]);
 			// Get the info for the part from BHL
 			if ($this->verbose) { print "Getting BookID {$part['ItemID']}\n"; }
 			$item = $this->get_bhl_item($part['ItemID']);
@@ -872,6 +871,7 @@ class MakePDF {
 	  Be Nice to the disk. It is your friend.
 	 */
 	private function clean_cache() {
+		return;
 		`find {$this->config->get('cache.paths.image')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
 		`find {$this->config->get('cache.paths.resize')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
 		`find {$this->config->get('cache.paths.pdf')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
