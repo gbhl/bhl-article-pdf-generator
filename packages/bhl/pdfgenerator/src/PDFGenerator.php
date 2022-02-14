@@ -457,11 +457,11 @@ class MakePDF {
 		GET PDF
 		Download a PDF from the Internet Archive
 	 */
-	private function get_archive_pdf($identifier, $override = false) {
+	private function get_archive_pdf($identifier) {
 
 		$filename = $identifier.'.pdf';
 		$path = $this->config->get('cache.paths.pdf').'/'.$filename;
-		if (!file_exists($path) || $override) {
+		if (!file_exists($path)) {
 			$url = 'https://archive.org/download/'.$identifier.'/'.$identifier.'.pdf';
 			file_put_contents($path, file_get_contents($url));
 		}
@@ -473,7 +473,7 @@ class MakePDF {
 		Download the DJVU file(s) from the Internet Archive
 		There may be more than one, so let's be extra careful
 	 */
-	private function get_djvus($pages, $override = false) {
+	private function get_djvus($pages) {
 		$ret = [];
 		foreach ($pages as $p) {
 			$identifier = $p['BarCode'];
@@ -481,7 +481,7 @@ class MakePDF {
 				$letter = substr($identifier,0,1);
 				$filename = $identifier.'_djvu.xml';
 				$cache_path = $this->config->get('cache.paths.djvu').'/'.$filename;
-				if (!file_exists($cache_path) || $override) {
+				if (!file_exists($cache_path)) {
 					$djvu = $this->config->get('paths.local_source')."/{$letter}/{$identifier}/{$identifier}_djvu.xml";
 					// Do we have the file locally?
 					if (file_exists($djvu)) {
@@ -504,7 +504,7 @@ class MakePDF {
 		Given an array of Page IDs, download the images from IA
 		(future versions of this will grab the image from our TAR file)
 	 */
-	private function get_page_images(&$pages, $identifier, $override = false) {
+	private function get_page_images(&$pages, $identifier) {
 		$c = 1;
 		$total = count($pages);
 		foreach ($pages as $p => $rec) {
@@ -634,7 +634,7 @@ class MakePDF {
 		GET BHL SEGMENT
 		Download the segment metadata from BHL
 	 */
-	private function get_bhl_segment($id, $override = false) {
+	private function get_bhl_segment($id) {
 
 		# build a filename
 		$filename = 'segment-'.$id.'.json';
@@ -642,7 +642,7 @@ class MakePDF {
 
 		# if it's not in the cache, get it and put it there
 		# note: Error results can get saved to the cache. 
-		if (!file_exists($path) || $override) {
+		if (!file_exists($path)) {
 			$url = 'https://www.biodiversitylibrary.org/api3?op=GetPartMetadata&id='.$id.'&format=json&pages=t&names=t&apikey='.$this->config->get('bhl.api_key');
 			file_put_contents($path, file_get_contents($url));
 		}
@@ -670,7 +670,7 @@ class MakePDF {
 		GET BHL ITEM
 		Download the segmnent metadata from BHL
 	 */
-	private function get_bhl_item($id, $override = false) {
+	private function get_bhl_item($id) {
 		
 		# build a filename
 		$filename = 'item-'.$id.'.json';
@@ -678,7 +678,7 @@ class MakePDF {
 
 		# if it's not in the cache, get it and put it there
 		# note: Error results can get saved to the cache. 
-		if (!file_exists($path) || $override) {
+		if (!file_exists($path)) {
 			$url = 'https://www.biodiversitylibrary.org/api3?op=GetItemMetadata&id='.$id.'&format=json&pages=f&names=f&parts=f&apikey='.$this->config->get('bhl.api_key');
 			file_put_contents($path, file_get_contents($url));
 		}
