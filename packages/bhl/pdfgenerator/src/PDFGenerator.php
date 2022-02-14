@@ -617,12 +617,14 @@ class MakePDF {
 			if (!$pages[$p]['JPGFile']) {
 				if ($this->verbose) { print "    ERROR: Could not find file {$prefix}\n"; }
 				$this->log->error("Could not find file {$prefix}", ['pid' => \posix_getpid()]);
+				throw new \Exception("Item {$identifier}: Could not find file {$prefix}");
 			}
 
 			// Verify this is an image!
 			if (exif_imagetype($pages[$p]['JPGFile']) != IMAGETYPE_JPEG) {
 				if ($this->verbose) { print "    ERROR: Segment $id: File is not a JPEG: {$prefix}.jpg\n"; }
-				$this->log->notice("Segment $id: File is not a JPEG: {$prefix}.jpg", ['pid' => \posix_getpid()]);
+				$this->log->notice("Item {$identifier}: File is not a JPEG: {$prefix}.jpg", ['pid' => \posix_getpid()]);
+				throw new \Exception("Item {$identifier}: File is not a JPEG: {$prefix}.jpg");
 				$pages[$p]['JPGFile'] = null;
 				$got_file = false;
 			}
