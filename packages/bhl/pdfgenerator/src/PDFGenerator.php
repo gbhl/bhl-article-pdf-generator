@@ -104,6 +104,7 @@ class MakePDF {
 			if ($this->verbose) { print "Getting DJVU file\n"; }
 			$djvus = $this->get_djvus($page_details);
 
+			if ($this->verbose) { print "Reading DJVU file(s)\n"; }
 			foreach ($djvus as $d => $rec) {
 				$djvu = new \PhpDjvu($djvus[$d]['path']);
 				$djvus[$d]['djvu'] = $djvu;
@@ -247,7 +248,7 @@ class MakePDF {
 	/*
 	 *
 	 */
-	 private function add_cover_page($pdf, $part, $item) {
+	private function add_cover_page($pdf, $part, $item) {
 		$image = dirname(__FILE__).'/../assets/BHL-logo.png';
 		$pdf->AddPage('P', array($this->a4_width_mm, $this->a4_height_mm));
 		$pdf->SetMargins('20','20');
@@ -795,7 +796,9 @@ class MakePDF {
 			if (isset($part['Issue'])) {
 				$metadata[] = "-XMP:Number=".escapeshellarg($part['Issue']);
 			}
-			$metadata[] = "-XMP:StartingPage=".escapeshellarg($part['StartPageNumber']);
+			if (isset($part['StartPageNumber'])) {
+				$metadata[] = "-XMP:StartingPage=".escapeshellarg($part['StartPageNumber']);
+			}	
 			if (isset($part['EndPageNumber'])) {
 				$metadata[] = "-XMP:EndingPage=".escapeshellarg($part['EndPageNumber']);
 			}
@@ -885,7 +888,7 @@ class MakePDF {
 		$authors = [];
 		$authorstring = '';
 		foreach ($part['Authors'] as $a) {
-			$authors[] = $a['Name'];
+			$authors[] = preg_replace('/,\s?$/', '', $a['Name']);
 		}
 		if (count($authors) == 1) {
 			$authorstring = $authors[0];
@@ -900,10 +903,10 @@ class MakePDF {
 		// CITATION
 		//    ... approximately
 		if ($authorstring) { 
-			if (preg_match('/\.$/', $authorstring)) {
-				$citation .= $authorstring.'. '; 
-			} else {
+			if (preg_match('/\.$/', trim($authorstring))) {
 				$citation .= $authorstring.' '; 
+			} else {
+				$citation .= $authorstring.'. '; 
 			}
 				
 		}
