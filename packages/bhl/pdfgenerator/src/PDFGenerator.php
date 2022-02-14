@@ -617,7 +617,7 @@ class MakePDF {
 
 			// Verify this is an image!
 			if (exif_imagetype($pages[$p]['JPGFile']) != IMAGETYPE_JPEG) {
-				if ($this->verbose) { print "    ERROR: Segment $id: File is not a JPEG: {$prefix}.jpg\n"; }
+				if ($this->verbose) { print "    File is not a JPEG: {$prefix}.jpg\n"; }
 				$this->log->notice("Item {$identifier}: File is not a JPEG: {$prefix}.jpg", ['pid' => \posix_getpid()]);
 				throw new \Exception("Item {$identifier}: File is not a JPEG: {$prefix}.jpg");
 				$pages[$p]['JPGFile'] = null;
