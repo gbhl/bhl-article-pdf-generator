@@ -557,26 +557,22 @@ class MakePDF {
 				if (file_exists($jp2_tar)) {
 					$tar = new \Archive_Tar($jp2_tar);
 					if ($tar) {
-						$c = 1;
-						$total = count($pages);
-						foreach ($pages as $p) {
-							$f_jp2 = $p['FileNamePrefix'].'.jp2';
-							$f_jpg = $p['FileNamePrefix'].'.jpg';
-							$fp = "{$p['BarCode']}_jp2/{$f_jp2}";
-							// Extract them from the ZIP file
-							$ret = $tar->extractList(
-								array("{$p['BarCode']}_jp2/{$f_jp2}"), 
-								$this->config->get('cache.paths.image'), 
-								"{$bc}_jp2/"
-							);
-							if ($ret) {
-								if ($this->verbose) { print " from JP2 TAR\n"; }
-								// Convert to JPEG and move to the cache folder
-								$im = new \Imagick ();
-								$im->readImage($this->config->get('cache.paths.image')."/{$bc}_jp2/{$prefix}.jp2");
-								$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
-								$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
-							}
+						$f_jp2 = $pages[$p]['FileNamePrefix'].'.jp2';
+						$f_jpg = $pages[$p]['FileNamePrefix'].'.jpg';
+						$fp = "{$pages[$p]['BarCode']}_jp2/{$f_jp2}";
+						// Extract them from the ZIP file
+						$ret = $tar->extractList(
+							array("{$pages[$p]['BarCode']}_jp2/{$f_jp2}"), 
+							$this->config->get('cache.paths.image'), 
+							"{$bc}_jp2/"
+						);
+						if ($ret) {
+							if ($this->verbose) { print " from JP2 TAR\n"; }
+							// Convert to JPEG and move to the cache folder
+							$im = new \Imagick ();
+							$im->readImage($this->config->get('cache.paths.image')."/{$prefix}.jp2");
+							$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
+							$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
 						}
 						unset($tar);
 					}
