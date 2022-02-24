@@ -22,15 +22,11 @@ Settings with which to connect to BHL to gather information. At this time, we ne
 
 **bhl.api_key** _(guid)_ - Used to identify our activity at BHL. Get one at https: //www.biodiversitylibrary.org/getapikey.aspx
 
-**bhl.db.type** _(string)_ - May be 'dblib' or 'mssql'
+**bhl.db.dsn** _(string)_ - DSN for your database. Examples:
 
-**bhl.db.host** _(string)_ - Database Host name or IP Address
-
-**bhl.db.dbname** _(string)_ - Database name.
-
-**bhl.db.port** _(string)_ - Should be "1433"
-
-**bhl.db.charset** _(string)_ - Should be "utf8"
+* sqlsrv:Server=db-server.example.net,1433;Database=MyDatabase
+* dblib:host=db-server.example.net:1433;dbname=MyDatabase;charset=utf8
+* mysql:host=db-server.example.net;port=3306;dbname=MyDatabase
 
 **bhl.db.username** _(string)_ - Database username.
 
@@ -61,4 +57,3 @@ Misc. Defaults are good.
 **max_memory** _(megabytes)_ - How much memory is PHP allowed to use. "1536M" is the minimum.
 
 **logging.filename** _(path)_ - Where is our log file?
-
