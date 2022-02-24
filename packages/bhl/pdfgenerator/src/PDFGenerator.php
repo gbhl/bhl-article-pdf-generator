@@ -946,6 +946,7 @@ class MakePDF {
 			$citation .= 'https://doi.org/'.$part['Doi']; 
 			$citation .= '.'; 
 		}
+		$citation = str_replace("\0", "", $citation);
 		return $citation;
 	}
 }
