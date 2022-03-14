@@ -42,7 +42,7 @@ while (true) {
 	if ($count < $max) {
 		log_message("Parent spawning child...");
 		clear_cache();
-		$command =  PHP_BINARY." {$child_script} > log/queue-pull-".time().".txt 2>&1 &";
+		$command =  PHP_BINARY." {$child_script} > /dev/null 2>&1 &";
 		`$command`;
 	}
 	sleep(5);
