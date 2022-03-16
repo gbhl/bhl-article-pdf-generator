@@ -735,6 +735,36 @@ class MakePDF {
 	}
 
 	/* 
+		GET ALL SEGMENTS
+		For a given item id get the pages at BHL
+	 */
+	public function get_all_segments() {		
+		if (!$this->bhl_dbh) {
+			try {
+				$this->bhl_dbh = new \PDO($this->config->get('bhl.db.dsn'), $this->config->get('bhl.db.username'), $this->config->get('bhl.db.password'));
+			} catch (Exception $e) {
+				echo "Failed to get DB handle: ".$e->getMessage()."\n";
+				exit;
+			}
+		}
+		$stmt = $this->bhl_dbh->prepare(
+			"SELECT SegmentID 
+			 FROM Segment s 
+			 INNER JOIN item i ON s.ItemId = i.ItemID
+			 WHERE i.ItemStatusID = 40
+			 AND s.RedirectSegmentID IS NULL
+			 AND (s.url IS NULL OR s.url = '')
+			 ORDER BY s.SegmentID"
+		);
+		$stmt->execute();
+		$ids = [];
+		while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+			$ids[] = $row['SegmentID'];
+		}
+		return $ids;
+	}
+
+	/* 
 		VALIDATE INPUT
 		Make sure we have everything we need to continue
 	 */
