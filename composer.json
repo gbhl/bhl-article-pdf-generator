@@ -12,7 +12,8 @@
 				"pear/archive_tar": "1.4.x-dev",
 				"hassankhan/config": "dev-develop",
 				"monolog/monolog": "2.x-dev",
-				"setasign/tfpdf": "dev-master"
+				"setasign/tfpdf": "dev-master",
+				"smalot/pdfparser": "dev-master"
 		},
 		"minimum-stability": "dev"
 }
