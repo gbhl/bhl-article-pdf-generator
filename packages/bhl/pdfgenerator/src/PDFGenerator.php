@@ -6,6 +6,8 @@ use PDODb;
 use Monolog\Logger;
 use Monolog\Handler\StreamHandler;
 use Monolog\Formatter\LineFormatter;
+use setasign\Fpdi\Fpdi;
+use setasign\Fpdi\PdfReader;
 
 require_once(dirname(__FILE__) . '/../lib/djvu.php');
 
@@ -53,7 +55,7 @@ class MakePDF {
 		GENERATE ARTICLE PDF
 		Main action, do all the things!
 	 */
-	function generate_article_pdf($id, $metadata = true, $page = true) {
+	function generate_article_pdf($id, $pages_changed = true, $metadata_changed = true, $ocr_changed = true) {
 		try {
 			// Set our filename
 			$L1 = substr((string)$id, 0, 1);
@@ -61,6 +63,11 @@ class MakePDF {
 			$output_filename = $this->config->get('paths.output').'/'.$L1.'/'.$L2.'/bhl-segment-'.$id.($this->config->get('image.desaturate') ? '-grey' : '').'.pdf';
 			if (!file_exists($this->config->get('paths.output').'/'.$L1.'/'.$L2)) {
 				mkdir($this->config->get('paths.output').'/'.$L1.'/'.$L2, 0755, true);
+			}
+
+			// If it doesn't exist, make sure we recreate from scratch.
+			if (!file_exists($output_filename)) {
+				$pages_changed = true;
 			}
 
 			$this->clean_cache();
@@ -99,115 +106,139 @@ class MakePDF {
 			// Get the pages from BHL because maybe I need the file name prefix
 			$page_details = $this->get_bhl_pages($pages);
 
-			// Get our PDF
-			if ($this->verbose) { print "Getting DJVU file\n"; }
-			$djvus = $this->get_djvus($page_details);
+			$pdf = null;
+			// If the pages changed, then we generate a whole new PDF
+			// Alternatively, only the metadata might change, in which case we 
+			// skip all this.
+			if ($pages_changed) {
 
-			if ($this->verbose) { print "Reading DJVU file(s)\n"; }
-			foreach ($djvus as $d => $rec) {
-				$djvu = new \PhpDjvu($djvus[$d]['path']);
-				$djvus[$d]['djvu'] = $djvu;
-			}
-			unset($djvu);
-			if (count($djvus) > 1) {
-				$this->log->notice("  Segment $id spans multiple Books.", ['pid' => \posix_getpid()]);
-				if ($this->verbose) { print "  WARNING: Segment $id spans multiple Books.\n"; }
-			}
-			
-			// Get our Images
-			if ($this->verbose) { print "Getting Page Images\n"; }
-			$this->get_page_images($page_details, $item['SourceIdentifier']);
+				// Get our PDF
+				if ($this->verbose) { print "Getting DJVU file\n"; }
+				$djvus = $this->get_djvus($page_details);
 
-			// Calculate the height and width and aspect ratio of each page.
-			foreach ($page_details as $p => $page) {
-				if (!$page_details[$p]['JPGFile']) {
-					$this->log->notice("  Segment $id has problems with images. Clearing cache and exiting early. Please try again.", ['pid' => \posix_getpid()]);	
-					if ($this->verbose) { print "  ERROR: Segment $id has problems with images. Tru clearing cache and try again. \n"; }
-					exit(1);
+				if ($this->verbose) { print "Reading DJVU file(s)\n"; }
+				foreach ($djvus as $d => $rec) {
+					$djvu = new \PhpDjvu($djvus[$d]['path']);
+					$djvus[$d]['djvu'] = $djvu;
 				}
-				$imagesize = getimagesize($page_details[$p]['JPGFile']);
-
-				$img_width_px = (int)($imagesize[0] * $this->config->get('image.resize'));
-				$img_height_px = (int)($imagesize[1] * $this->config->get('image.resize'));
-
-				$page_details[$p]['WidthPX'] = $img_width_px; 
-				$page_details[$p]['HeightPX'] = $img_height_px;
-
-				// Decide if we need to fix the height or the width
-				$image_aspect_ratio = $img_height_px / $img_width_px;
-				$a4_aspect_ratio = $this->a4_height_mm / $this->a4_width_mm;
-
-				$page_details[$p]['AspectRatio'] = $image_aspect_ratio;
-				$page_details[$p]['A4AspectRatio'] = $a4_aspect_ratio;
-				// Do we fit to the height or the width?
-				if ($image_aspect_ratio > 1) {
-					// Image is narrower than an A4 page, fit to the height
-					$page_details[$p]['DPMM'] = $img_height_px / $this->a4_height_mm;
-					$page_details[$p]['Orientation'] = 'P';
-				} else {
-					// Image is wider than an A4 page, fit to the width
-					$page_details[$p]['DPMM'] = $img_width_px / $this->a4_width_mm;
-					$page_details[$p]['Orientation'] = 'L';
+				unset($djvu);
+				if (count($djvus) > 1) {
+					$this->log->notice("  Segment $id spans multiple Books.", ['pid' => \posix_getpid()]);
+					if ($this->verbose) { print "  WARNING: Segment $id spans multiple Books.\n"; }
 				}
-				// Convert to millimeters
-				$page_details[$p]['WidthMM'] = (int)($img_width_px / $page_details[$p]['DPMM']); 
-				$page_details[$p]['HeightMM'] = (int)($img_height_px / $page_details[$p]['DPMM']);
-			}
-
-			// ------------------------------
-			// Generate the PDF
-			// ------------------------------
-			$pdf = new \CustomPDF('P', 'mm');
-			$pdf->SetAutoPageBreak(false);
-			$pdf->SetMargins(0, 0);
-			$pdf->AddFont('NotoSans','',   'NotoSans-Regular.ttf', true);
-			$pdf->AddFont('NotoSans','I',  'NotoSans-Italic.ttf', true);
-			$pdf->AddFont('NotoSans','B',  'NotoSans-Bold.ttf', true);
-			$pdf->AddFont('NotoSans','IB', 'NotoSans-BoldItalic.ttf', true);
-
-			$params = [];
-			$c = 0;
-			foreach ($pages as $pg) {
-				$p = $page_details['pageid-'.$pg];
-				if ($this->verbose) { print chr(13)."Adding Page {$c} of ".count($pages)." to PDF"; }
-				// Resize the image
-				$xy_factor = 1;
-				if ($this->config->get('image.resize') != 1) {
-					$factor = (int)($this->config->get('image.resize') * 100);
-					$xy_factor = $this->config->get('image.resize');
-					if (!file_exists($this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg')) {
-						$cmd = "convert -resize ".$factor."% "
-							."'".$this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg'."' "
-							."'".$this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg'."'";
-						`$cmd`;
-					}
-					$p['JPGFile'] = $this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg';
-				}
-				$pdf->AddPage($p['Orientation'], array($p['WidthMM'], $p['HeightMM']));
-				$pdf->SetFont('NotoSans', '', 10);
-				$pdf->SetTextColor(0, 0, 0);
 				
-				// Get the lines, Add the text to the page
-				$djvu = $djvus[$p['BarCode']]['djvu'];
-				$prefix = $djvu->GetPagebySequence($p['SequenceOrder']-1);
-				$lines = $djvu->GetPageLines($prefix, $this->config->get('image.resize'), $p['DPMM']);
-				foreach ($lines as $l) {
-					$pdf->setXY($l['x'], $l['y']);
-					$pdf->Cell($l['w'], $l['h'], $l['text'], 1, 0, 'FJ'); // FJ = force full justifcation
+
+				// Get our Images
+				if ($this->verbose) { print "Getting Page Images\n"; }
+				$this->get_page_images($page_details, $item['SourceIdentifier']);
+
+								// Calculate the height and width and aspect ratio of each page.
+				foreach ($page_details as $p => $page) {
+					if (!$page_details[$p]['JPGFile']) {
+						$this->log->notice("  Segment $id has problems with images. Clearing cache and exiting early. Please try again.", ['pid' => \posix_getpid()]);	
+						if ($this->verbose) { print "  ERROR: Segment $id has problems with images. Tru clearing cache and try again. \n"; }
+						exit(1);
+					}
+					$imagesize = getimagesize($page_details[$p]['JPGFile']);
+
+					$img_width_px = (int)($imagesize[0] * $this->config->get('image.resize'));
+					$img_height_px = (int)($imagesize[1] * $this->config->get('image.resize'));
+
+					$page_details[$p]['WidthPX'] = $img_width_px; 
+					$page_details[$p]['HeightPX'] = $img_height_px;
+
+					// Decide if we need to fix the height or the width
+					$image_aspect_ratio = $img_height_px / $img_width_px;
+					$a4_aspect_ratio = $this->a4_height_mm / $this->a4_width_mm;
+
+					$page_details[$p]['AspectRatio'] = $image_aspect_ratio;
+					$page_details[$p]['A4AspectRatio'] = $a4_aspect_ratio;
+					// Do we fit to the height or the width?
+					if ($image_aspect_ratio > 1) {
+						// Image is narrower than an A4 page, fit to the height
+						$page_details[$p]['DPMM'] = $img_height_px / $this->a4_height_mm;
+						$page_details[$p]['Orientation'] = 'P';
+					} else {
+						// Image is wider than an A4 page, fit to the width
+						$page_details[$p]['DPMM'] = $img_width_px / $this->a4_width_mm;
+						$page_details[$p]['Orientation'] = 'L';
+					}
+					// Convert to millimeters
+					$page_details[$p]['WidthMM'] = (int)($img_width_px / $page_details[$p]['DPMM']); 
+					$page_details[$p]['HeightMM'] = (int)($img_height_px / $page_details[$p]['DPMM']);
 				}
-				$pdf->Image($p['JPGFile'], 0, 0, ($p['DPMM'] * -25.4)); 
-				$c++;
-			} // foreach pages
-			if ($this->verbose) { print chr(13)."Adding Page {$c} of ".count($pages)." to PDF"; }
-			print "\n";
-			$pdf->SetCompression(false);
-			$pdf->SetDisplayMode('fullpage','two');
+
+				// ------------------------------
+				// Generate the PDF
+				// ------------------------------
+				$pdf = new \CustomPDF('P', 'mm');
+				$pdf->SetAutoPageBreak(false);
+				$pdf->SetMargins(0, 0);
+				$pdf->AddFont('NotoSans','',   'NotoSans-Regular.ttf', true);
+				$pdf->AddFont('NotoSans','I',  'NotoSans-Italic.ttf', true);
+				$pdf->AddFont('NotoSans','B',  'NotoSans-Bold.ttf', true);
+				$pdf->AddFont('NotoSans','IB', 'NotoSans-BoldItalic.ttf', true);
+
+				$params = [];
+				$c = 0;
+				foreach ($pages as $pg) {
+					$p = $page_details['pageid-'.$pg];
+					if ($this->verbose) { print chr(13)."Adding Page {$c} of ".count($pages)." to PDF"; }
+					// Resize the image
+					$xy_factor = 1;
+					if ($this->config->get('image.resize') != 1) {
+						$factor = (int)($this->config->get('image.resize') * 100);
+						$xy_factor = $this->config->get('image.resize');
+						if (!file_exists($this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg')) {
+							$cmd = "convert -resize ".$factor."% "
+								."'".$this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg'."' "
+								."'".$this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg'."'";
+							`$cmd`;
+						}
+						$p['JPGFile'] = $this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg';
+					}
+					$pdf->AddPage($p['Orientation'], array($p['WidthMM'], $p['HeightMM']));
+					$pdf->SetFont('NotoSans', '', 10);
+					$pdf->SetTextColor(0, 0, 0);
+					
+					// Get the lines, Add the text to the page
+					$djvu = $djvus[$p['BarCode']]['djvu'];
+					$prefix = $djvu->GetPagebySequence($p['SequenceOrder']-1);
+					$lines = $djvu->GetPageLines($prefix, $this->config->get('image.resize'), $p['DPMM']);
+					foreach ($lines as $l) {
+						$pdf->setXY($l['x'], $l['y']);
+						$pdf->Cell($l['w'], $l['h'], $l['text'], 1, 0, 'FJ'); // FJ = force full justifcation
+					}
+					$pdf->Image($p['JPGFile'], 0, 0, ($p['DPMM'] * -25.4)); 
+					$c++;
+				} // foreach pages
+				if ($this->verbose) { print chr(13)."Adding Page {$c} of ".count($pages)." to PDF"; }
+				print "\n";
+				$pdf->SetCompression(false);
+				$pdf->SetDisplayMode('fullpage','two');
+
+				// Add the "cover" page...at the end
+				$this->add_cover_page($pdf, $part, $item);
+
+			}
+			if ($metadata_changed) {
+				$pdf = new Fpdi();
+
+				// get the page count
+				$pageCount = $pdf->setSourceFile($output_filename);
+				// iterate through all pages
+				for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+						// import a page
+						$templateId = $pdf->importPage($pageNo);
+
+						$pdf->AddPage();
+						// use the imported page and adjust the page size
+						$pdf->useTemplate($templateId, ['adjustPageSize' => true]);
+				}
+			}
 
 			// Set the title metadata
 			$pdf->SetTitle($this->get_citation($part, $item));
-
-			// Add the "cover" page...at the end
-			$this->add_cover_page($pdf, $part, $item);
 
 			// Set the Author Metadata
 			$temp = [];
@@ -217,7 +248,7 @@ class MakePDF {
 			$pdf->SetAuthor(implode('; ', $temp));
 
 			// Set the Subject metadata, which we are hijacking to link back to BHL
-			$pdf->SetSubject('From the Biodiversity Heritage Library');	
+			$pdf->SetSubject('From the Biodiversity Heritage Library (BHL)');	
 
 			// Set the Keyword metadata (scientific names)
 			$temp = [];

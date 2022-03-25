@@ -26,12 +26,23 @@ $pdfgen = new MakePDF($config, true);
 ini_set("memory_limit", $config->get('max_memory'));
 
 $id = null;
+$pg = false;
+$md = false;
 if (isset($argv[1])) {
 	$id = $argv[1];
+}
+if (isset($argv[2]) && $argv[2] == 'yes') {
+	$pg = true;
+}
+
+if (isset($argv[3]) && $argv[3] == 'yes') {
+	$md = true;
 }
 
 if (!$id) {
 	print "ERROR: ID is required\n";
 	die;
 }
-$pdfgen->generate_article_pdf($id, true, true);
+print "Generating PDF with changed".($pg ? " pages " : "").($md ? " metadata " : "")."\n";
+
+$pdfgen->generate_article_pdf($id, $pg, $md);
