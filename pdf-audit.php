@@ -47,12 +47,17 @@ foreach ($ids as $id) {
 	if (!file_exists($cache_path)) {
 		$url = 'https://www.biodiversitylibrary.org/api3?op=GetPartMetadata&id='.$id.'&format=json&pages=t&names=t&apikey='.$config->get('bhl.api_key');
 		file_put_contents($cache_path, file_get_contents($url));
+		fwrite(STDERR, "Cache miss...");
+	} else {
+		fwrite(STDERR, "Cache hit...");
 	}
 	# read from the cache
 	$object = json_decode(file_get_contents($cache_path), true, 512, JSON_OBJECT_AS_ARRAY);
 	$json_pages = count($object['Result'][0]['Pages']);
 
 	// Get the number of pages in the PDF
+	fwrite(STDERR, "PDF...");
+
 	$parser = new \Smalot\PdfParser\Parser();
 	$pdf = $parser->parseFile($filename);
 	$pdf_pages = count($pdf->getPages());
@@ -64,6 +69,7 @@ foreach ($ids as $id) {
 	}
 
 	// Get the text on the last page
+	fwrite(STDERR, "Page text...");
 	$text = $pdf->getPages()[$pdf_pages-1]->getText();
 	$text = preg_replace('/\s+/',' ', $text);
 	// Does it contain the boilerplate BHL text?
@@ -71,6 +77,7 @@ foreach ($ids as $id) {
 		print "SegmentID {$id}: Pagecount doesn't match (API={$json_pages}, PDF={$pdf_pages})\n";
 		continue;
 	}
+	fwrite(STDERR, "Done.\n");
 	// Other checks?
 }
 
