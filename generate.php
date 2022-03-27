@@ -31,16 +31,22 @@ $md = false;
 if (isset($argv[1])) {
 	$id = $argv[1];
 }
-if (isset($argv[2]) && $argv[2] == 'yes') {
-	$pg = true;
+if (isset($argv[2])) {
+	if ($argv[2] == 'page') { $pg = true; }
+	if ($argv[2] == 'metadata') { $md = true; }
 }
-
-if (isset($argv[3]) && $argv[3] == 'yes') {
-	$md = true;
+if (isset($argv[3])) {
+	if ($argv[3] == 'page') { $pg = true; }
+	if ($argv[3] == 'metadata') { $md = true; }
 }
-
 if (!$id) {
 	print "ERROR: ID is required\n";
+	print "USAGE: php generate.php ID [page] [metadata]\n";
+	die;
+}
+if (!$pg && !$md) {
+	print "ERROR: Page or Metadata change required\n";
+	print "USAGE: php generate.php ID [page] [metadata]\n";
 	die;
 }
 print "Generating PDF with changed".($pg ? " pages " : "").($md ? " metadata " : "")."\n";
