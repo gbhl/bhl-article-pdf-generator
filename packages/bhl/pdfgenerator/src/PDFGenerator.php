@@ -238,14 +238,16 @@ class MakePDF {
 			}
 
 			// Set the title metadata
-			$pdf->SetTitle($this->get_citation($part, $item));
+			// For whatever reason, the PDF expects ISO-8859-1 even though we are using UTF-8
+			$pdf->SetTitle(utf8_decode($this->get_citation($part, $item)));
 
 			// Set the Author Metadata
 			$temp = [];
 			foreach ($part['Authors'] as $a) {
 				$temp[] = $a['Name'].(isset($a['Dates']) ? ' ('.$a['Dates'].')' : '');
 			}
-			$pdf->SetAuthor(implode('; ', $temp));
+			// For whatever reason, the PDF expects ISO-8859-1 even though we are using UTF-8
+			$pdf->SetAuthor(utf8_decode(implode('; ', $temp)));
 
 			// Set the Subject metadata, which we are hijacking to link back to BHL
 			$pdf->SetSubject('From the Biodiversity Heritage Library (BHL)');	
