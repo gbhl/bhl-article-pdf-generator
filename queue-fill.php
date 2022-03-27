@@ -2,8 +2,14 @@
 namespace QueueWatcher;
 require_once __DIR__ . '/vendor/autoload.php';
 
-print "Don't run this. Really.\n";
-die;
+$force = false;
+if (isset($argv[1]) && $argv[1] == 'force') {
+	$force = true;
+}
+if (!$force) {
+	print "Don't run this. Really.\n";
+	die;
+}
 
 use Noodlehaus\Config;
 use Noodlehaus\Parser\Json;
