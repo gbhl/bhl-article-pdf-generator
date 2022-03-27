@@ -6,7 +6,7 @@ use PDODb;
 use Monolog\Logger;
 use Monolog\Handler\StreamHandler;
 use Monolog\Formatter\LineFormatter;
-use setasign\Fpdi\Fpdi;
+use setasign\Fpdi\Tfpdf\Fpdi;
 use setasign\Fpdi\PdfReader;
 
 require_once(dirname(__FILE__) . '/../lib/djvu.php');
@@ -227,7 +227,7 @@ class MakePDF {
 				// get the page count
 				$pageCount = $pdf->setSourceFile($output_filename);
 				// iterate through all pages
-				for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+				for ($pageNo = 1; $pageNo <= ($pageCount-1); $pageNo++) {
 						// import a page
 						$templateId = $pdf->importPage($pageNo);
 
@@ -235,6 +235,15 @@ class MakePDF {
 						// use the imported page and adjust the page size
 						$pdf->useTemplate($templateId, ['adjustPageSize' => true]);
 				}
+				// Re-add the fonts because we made a new PDF
+				$pdf->AddFont('NotoSans','',   'NotoSans-Regular.ttf', true);
+				$pdf->AddFont('NotoSans','I',  'NotoSans-Italic.ttf', true);
+				$pdf->AddFont('NotoSans','B',  'NotoSans-Bold.ttf', true);
+				$pdf->AddFont('NotoSans','IB', 'NotoSans-BoldItalic.ttf', true);
+
+				// Add the "cover" page...at the end
+				$this->add_cover_page($pdf, $part, $item);
+
 			}
 
 			// Set the title metadata
