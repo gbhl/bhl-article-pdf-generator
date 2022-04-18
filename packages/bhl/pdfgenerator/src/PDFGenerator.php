@@ -555,6 +555,7 @@ class MakePDF {
 
 			$jp2_zip = $this->config->get('paths.local_source')."/{$letter}/{$bc}/{$bc}_jp2.zip";
 			$jp2_tar = $this->config->get('paths.local_source')."/{$letter}/{$bc}/{$bc}_jp2.tar";
+			$tif_zip = $this->config->get('paths.local_source')."/{$letter}/{$bc}/{$bc}_tif.zip";
 
 			if ($this->verbose) { print "  {$prefix} ($c/$total)..."; }
 
@@ -619,7 +620,33 @@ class MakePDF {
 					}
 				}
 			}
-			
+
+			// Check the local TIF ZIP file
+			if (!$pages[$p]['JPGFile']) {
+				if (file_exists($tif_zip)) {
+					// Get the list of filenames
+					$zip = new \ZipArchive;
+					if ($zip->open($tif_zip)) {
+						// Extract them from the ZIP file
+						$ret = $zip->extractTo($this->config->get('cache.paths.image'), "{$bc}_tif/{$prefix}.tif");
+						if ($ret) {
+							if ($this->verbose) { print " from TIF ZIP\n"; }
+							// Convert to JPEG and move to the cache folder
+							$im = new \Imagick ();
+							$im->readImage($this->config->get('cache.paths.image')."/{$bc}_tif/{$prefix}.tif");
+							$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
+							$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
+						} else {
+							if ($this->verbose) { print "    $tif_zip Extraction Failed for {$bc}_tif/{$prefix}.tif\n"; }
+						}
+						$zip->close();
+					} else {
+						if ($this->verbose) { print "    $tif_zip Can't be Opened\n"; }
+					}
+					unset($zip);
+				}
+			}
+
 			// fall back to getting it from IA's JP2 ZIP file
 			if (!$pages[$p]['JPGFile']) {
 				$url = "https://archive.org/download/{$bc}/{$bc}_jp2.zip/{$bc}_jp2/{$prefix}.jp2";
