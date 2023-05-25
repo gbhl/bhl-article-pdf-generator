@@ -1,0 +1,17 @@
+[Unit]
+Description=BHL PDF Updater Service
+
+[Service]
+Type=simple
+User=root
+# CHANGE PATHS HERE
+ExecStart=-/usr/bin/env /opt/rh/rh-php73/root/usr/bin/php /data/pdf/segment-pdf-generator/pdf-generator.php 
+# CHANGE PATH HERE
+WorkingDirectory=/data/pdf/segment-pdf-generator
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=bhl-pdf-generator
+
+[Install]
+WantedBy=multi-user.target
+
