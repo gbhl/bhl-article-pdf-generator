@@ -702,25 +702,14 @@ class MakePDF {
 		Download the segment metadata from BHL
 	 */
 	private function get_bhl_segment($id) {
-
-		# build a filename
-		$filename = 'segment-'.$id.'.json';
-		$path = $this->config->get('cache.paths.json').'/'.$filename;
-
-		# if it's not in the cache, get it and put it there
-		# note: Error results can get saved to the cache. 
-		if (!file_exists($path)) {
-			$url = 'https://www.biodiversitylibrary.org/api3?op=GetPartMetadata&id='.$id.'&format=json&pages=t&names=t&apikey='.$this->config->get('bhl.api_key');
-			file_put_contents($path, file_get_contents($url));
-		}
-		# read from the cache
-		$object = json_decode(file_get_contents($path), true, 512, JSON_OBJECT_AS_ARRAY);
+		$url = 'https://www.biodiversitylibrary.org/api3?op=GetPartMetadata&id='.$id.'&format=json&pages=t&names=t&apikey='.$this->config->get('bhl.api_key');
+		$data = file_get_contents($url);
+		$object = json_decode($data, true, 512, JSON_OBJECT_AS_ARRAY);
 
 		# check our results
 		if (strtolower($object['Status']) == 'ok') {
 			# did we actually get results?
 			if (count($object['Result']) == 0) {
-				unlink($path); # since we had an error, delete this from the cache.
 				$this->log->error('Segment '.$id.' not found.', ['pid' => \posix_getpid()]);
 				return null;
 			} else {
@@ -728,7 +717,6 @@ class MakePDF {
 				return $object;
 			}
 		} else {
-			unlink($path); # since we had an error, delete this from the cache.
 			$this->log->error('Error getting segment metadata: '.$object['ErrorMessage'], ['pid' => \posix_getpid()]);
 		}
 	}
@@ -738,33 +726,22 @@ class MakePDF {
 		Download the segmnent metadata from BHL
 	 */
 	private function get_bhl_item($id) {
-		
-		# build a filename
-		$filename = 'item-'.$id.'.json';
-		$path = $this->config->get('cache.paths.json').'/'.$filename;
-
-		# if it's not in the cache, get it and put it there
-		# note: Error results can get saved to the cache. 
-		if (!file_exists($path)) {
-			$url = 'https://www.biodiversitylibrary.org/api3?op=GetItemMetadata&id='.$id.'&format=json&pages=f&names=f&parts=f&apikey='.$this->config->get('bhl.api_key');
-			file_put_contents($path, file_get_contents($url));
-		}
 		# read from the cache
-		$object = json_decode(file_get_contents($path), true, 512, JSON_OBJECT_AS_ARRAY);
+		$url = 'https://www.biodiversitylibrary.org/api3?op=GetItemMetadata&id='.$id.'&format=json&pages=f&names=f&parts=f&apikey='.$this->config->get('bhl.api_key');
+		$data = file_get_contents($url);
+		$object = json_decode($data, true, 512, JSON_OBJECT_AS_ARRAY);
 
 		# check our results
 		if (strtolower($object['Status']) == 'ok') {
 			# did we actually get results?
 			if (count($object['Result']) == 0) {
-				unlink($path); # since we had an error, delete this from the cache.
-        $this->log->error('Item '.$id.' not found.', ['pid' => \posix_getpid()]);
+		        $this->log->error('Item '.$id.' not found.', ['pid' => \posix_getpid()]);
 				return null;
 			} else {
 				# looks good, return the object
 				return $object;
 			}
 		} else {
-			unlink($path); # since we had an error, delete this from the cache.
 			die('Error getting segment metadata: '.$object['ErrorMessage']."\n");
 		}
 	}
