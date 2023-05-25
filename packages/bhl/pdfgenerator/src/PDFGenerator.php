@@ -96,7 +96,8 @@ class MakePDF {
 			foreach ($part['Pages'] as $p) {
 				$pages[] = $p['PageID'];
 			}
-			$this->log->notice("Processing segment $id (".count($pages)." pages)...", ['pid' => \posix_getpid()]);
+			$mode = ($pages_changed ? "pages " : "").($metadata_changed ? "metadata ": "").($ocr_changed ? "ocr " : "");
+			$this->log->notice("Processing segment $id (".count($pages)." pages) [".trim($mode)."]...", ['pid' => \posix_getpid()]);
 			// Get the info for the part from BHL
 			if ($this->verbose) { print "Getting BookID {$part['ItemID']}\n"; }
 			$item = $this->get_bhl_item($part['ItemID']);
