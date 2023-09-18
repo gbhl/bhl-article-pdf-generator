@@ -2,6 +2,7 @@
 
 namespace BHL\PDFGenerator;
 
+use Exception;
 use PDODb;
 use Monolog\Logger;
 use Monolog\Handler\StreamHandler;
@@ -39,7 +40,16 @@ class MakePDF {
 	public function __construct($config, $verbose = false) {
 		$this->config = $config;
 		$this->validate_config();
-		$this->verbose = $verbose;
+		if ($verbose) {
+			print "Setting verbosity from constructor\n";
+			$this->verbose = $verbose;
+		}
+		
+		// Allow config to set verbosity
+		if ($this->config->get('verbose')) {
+			print "Setting verbosity from config\n";
+			$this->verbose = true;
+		}
 
 		// create a log channel
 		$dateFormat = "Y-m-d H:i:s T";
@@ -117,6 +127,12 @@ class MakePDF {
 				if ($this->verbose) { print "Getting DJVU file\n"; }
 				$djvus = $this->get_djvus($page_details);
 
+				// Error handling
+				if (!$djvus) {
+					$this->log->error("  Could not get DJVU file or it's empty.", ['pid' => \posix_getpid()]);
+					if ($this->verbose) { print "  ERROR: Could not get DJVU file or it's empty.\n"; }
+					exit(1);
+				}
 				if ($this->verbose) { print "Reading DJVU file(s)\n"; }
 				foreach ($djvus as $d => $rec) {
 					$djvu = new \PhpDjvu($djvus[$d]['path']);
@@ -137,7 +153,7 @@ class MakePDF {
 				foreach ($page_details as $p => $page) {
 					if (!$page_details[$p]['JPGFile']) {
 						$this->log->notice("  Segment $id has problems with images. Clearing cache and exiting early. Please try again.", ['pid' => \posix_getpid()]);	
-						if ($this->verbose) { print "  ERROR: Segment $id has problems with images. Tru clearing cache and try again. \n"; }
+						if ($this->verbose) { print "  ERROR: Segment $id has problems with images. Try clearing cache and try again. \n"; }
 						exit(1);
 					}
 					$imagesize = getimagesize($page_details[$p]['JPGFile']);
@@ -532,10 +548,28 @@ class MakePDF {
 					} else {
 						// Get it from the internet archive
 						$url = 'https://archive.org/download/'.$identifier.'/'.$filename;
-						file_put_contents($cache_path, file_get_contents($url));
+						try {
+							// Suppress the warning because we'll check later if it's empty
+							$contents = @file_get_contents($url);
+							if ($contents) {
+								file_put_contents($cache_path, $contents);
+							} else {
+								if ($this->verbose) { print "  ERROR: Could not get DJVU from IA\n"; }
+								return null;	
+							}							
+						} catch (Exception $e) {
+							if ($this->verbose) { print "  ERROR: Unable to get DJVU from IA: ".$e->getMessage()."\n"; }
+							return null;
+						}
+						
 					}
 				}
 				$ret[$identifier] = array('path' => $cache_path);
+				if (filesize($cache_path) == 0) {
+					unlink($cache_path);
+					if ($this->verbose) { print "  DJVU Cache file is empty\n"; }
+					return null;
+				}
 			}
 		}
 		return $ret;

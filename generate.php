@@ -21,7 +21,7 @@ use Monolog\Logger;
 use Monolog\Handler\StreamHandler;
 
 $config = new Config('config/config.json');
-$pdfgen = new MakePDF($config, true);
+$pdfgen = new MakePDF($config);
 
 ini_set("memory_limit", $config->get('max_memory'));
 

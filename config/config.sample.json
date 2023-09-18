@@ -39,5 +39,6 @@
 	},
 	"logging": {
 		"filename": "./log/pdf-generator.log"
-	}
+	},
+	"verbose": 0
 }
