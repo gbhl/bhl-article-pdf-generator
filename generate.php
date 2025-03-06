@@ -21,7 +21,7 @@ use Monolog\Logger;
 use Monolog\Handler\StreamHandler;
 
 $config = new Config('config/config.json');
-$pdfgen = new MakePDF($config);
+$pdfgen = new MakePDF($config, false); // False = not verbose
 
 ini_set("memory_limit", $config->get('max_memory'));
 
@@ -41,12 +41,12 @@ if (isset($argv[3])) {
 }
 if (!$id) {
 	print "ERROR: ID is required\n";
-	print "USAGE: php generate.php ID [page] [metadata]\n";
+	print "USAGE: php generate.php ID (page|metadata)\n";
 	die;
 }
 if (!$pg && !$md) {
 	print "ERROR: Page or Metadata change required\n";
-	print "USAGE: php generate.php ID [page] [metadata]\n";
+	print "USAGE: php generate.php ID (page|metadata)\n";
 	die;
 }
 print "Generating PDF with changed".($pg ? " pages " : "").($md ? " metadata " : "")."\n";

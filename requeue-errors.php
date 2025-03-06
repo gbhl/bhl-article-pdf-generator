@@ -22,9 +22,11 @@ $connection = new AMQPStreamConnection(
 	$config->get('mq.username'),
 	$config->get('mq.password')
 );
+print "Connected.\n";
 $channel = $connection->channel();
 $channel->queue_declare($config->get('mq.error_queue_name'), true, true, false, true);
 $channel->basic_qos(null, 1, null);
+print_r($channel);
 
 $process_messsage = function($msg){
 	global $pdfgen;

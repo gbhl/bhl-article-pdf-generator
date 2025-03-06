@@ -12,7 +12,7 @@ use BHL\PDFGenerator\MakePDF;
 
 $config = new Config('config/config.json');
 $pdfgen = new MakePDF($config);
-$limit = 1000;
+$limit = 100;
 
 ini_set("memory_limit", $config->get('max_memory'));
 
@@ -38,7 +38,7 @@ $process_messsage = function($msg){
 #	$msg->ack();
 	
 	$body = explode('|', trim($msg->body));
-	if (!isset($body[3])) { $body[3] = ''; }
+	if (!isset($body[3])) { $body[3] = 'page'; } // If we get no directive, use "page"
 	$id = $body[2];
 	print "Generating pdf for ID $id\n";
 	try {

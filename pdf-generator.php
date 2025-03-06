@@ -7,7 +7,7 @@
 // pushing through the BHL PDF message queue.
 // ******************************************
 
-$max = 8;
+$max = 5;
 $child_script = "queue-pull.php";
 
 if (isset($argv[1])) {

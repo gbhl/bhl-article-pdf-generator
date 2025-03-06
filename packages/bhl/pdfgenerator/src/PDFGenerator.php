@@ -116,8 +116,24 @@ class MakePDF {
 
 			// Get the pages from BHL because maybe I need the file name prefix
 			$page_details = $this->get_bhl_pages($pages);
-
+			
+			// Get the IA idenifier just because we may need it in the error logging
+			$ia_id = '';
+			foreach ($page_details as $p) {
+			    $ia_id = $p['BarCode'];
+			    break;
+			}
+	
 			$pdf = null;
+			// If only metadata changed, and the file can't be found,
+			// we need to create the file anyway. This prevents oddball errors.
+			if ($metadata_changed) {
+				if (!file_exists($output_filename)) {
+					$pages_changed = true;
+					$metadata_changed = false;
+				}
+			}
+
 			// If the pages changed, then we generate a whole new PDF
 			// Alternatively, only the metadata might change, in which case we 
 			// skip all this.
@@ -131,7 +147,8 @@ class MakePDF {
 				if (!$djvus) {
 					$this->log->error("  Could not get DJVU file or it's empty.", ['pid' => \posix_getpid()]);
 					if ($this->verbose) { print "  ERROR: Could not get DJVU file or it's empty.\n"; }
-					exit(1);
+					throw new \Exception("Exception while processing segment $id: Could not get DJVU file for $ia_id");
+					return false;
 				}
 				if ($this->verbose) { print "Reading DJVU file(s)\n"; }
 				foreach ($djvus as $d => $rec) {
@@ -554,11 +571,11 @@ class MakePDF {
 							if ($contents) {
 								file_put_contents($cache_path, $contents);
 							} else {
-								if ($this->verbose) { print "  ERROR: Could not get DJVU from IA\n"; }
+								if ($this->verbose) { print "  ERROR: Could not get DJVU from IA ($identifier)\n"; }
 								return null;	
 							}							
 						} catch (Exception $e) {
-							if ($this->verbose) { print "  ERROR: Unable to get DJVU from IA: ".$e->getMessage()."\n"; }
+							if ($this->verbose) { print "  ERROR: Unable to get DJVU from IAi ($identifier): ".$e->getMessage()."\n"; }
 							return null;
 						}
 						
@@ -606,6 +623,7 @@ class MakePDF {
 			// Check the local JP2 ZIP file
 			if (!$pages[$p]['JPGFile']) {
 				if (file_exists($jp2_zip)) {
+					if ($this->verbose) { print "checking JP2 ZIP\n"; }
 					// Get the list of filenames
 					$zip = new \ZipArchive;
 					if ($zip->open($jp2_zip)) {
@@ -632,6 +650,7 @@ class MakePDF {
 			// Check the local JP2 TAR file
 			if (!$pages[$p]['JPGFile']) {
 				if (file_exists($jp2_tar)) {
+                                        if ($this->verbose) { print "checking JP2 TAR\n"; }
 					$tar = new \Archive_Tar($jp2_tar);
 					if ($tar) {
 						$f_jp2 = $pages[$p]['FileNamePrefix'].'.jp2';
@@ -659,6 +678,7 @@ class MakePDF {
 			// Check the local TIF ZIP file
 			if (!$pages[$p]['JPGFile']) {
 				if (file_exists($tif_zip)) {
+                                        if ($this->verbose) { print "checking TIF ZIP\n"; }
 					// Get the list of filenames
 					$zip = new \ZipArchive;
 					if ($zip->open($tif_zip)) {
@@ -682,8 +702,25 @@ class MakePDF {
 				}
 			}
 
+			// fall back to getting it from IA's TIF ZIP
+			if (!$pages[$p]['JPGFile']) {
+				if ($this->verbose) { print "checking at IA TIF ZIP\n"; }
+				$url = "https://archive.org/download/{$bc}/{$bc}_tif.zip/{$bc}_tif/{$prefix}.tif";
+				$temp_fn = $this->config->get('cache.paths.image')."/{$prefix}.tif";
+				@file_put_contents($temp_fn, file_get_contents($url));
+				clearstatcache(); // Stupid, but required for getting filesize() of local paths
+				if (file_exists($temp_fn) && filesize($temp_fn) > 0) {
+					if ($this->verbose) { print " from IA TIF ZIP\n"; }
+					$im = new \Imagick ();
+					$im->readImage($temp_fn);
+					$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
+					$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
+				}
+			}
+
 			// fall back to getting it from IA's JP2 ZIP file
 			if (!$pages[$p]['JPGFile']) {
+                                if ($this->verbose) { print "checking at IA JP2 ZIP\n"; }
 				$url = "https://archive.org/download/{$bc}/{$bc}_jp2.zip/{$bc}_jp2/{$prefix}.jp2";
 				$temp_fn = $this->config->get('cache.paths.image')."/{$prefix}.jp2";
 				@file_put_contents($temp_fn, file_get_contents($url));
@@ -699,6 +736,7 @@ class MakePDF {
 
 			// fall back even more to getting it from IA's JP2 TAR file
 			if (!$pages[$p]['JPGFile']) {
+                                if ($this->verbose) { print "checking JP2 TAR\n"; }
 				$url = "https://archive.org/download/{$bc}/{$bc}_jp2.tar/{$bc}_jp2/{$prefix}.jp2";
 				$temp_fn = $this->config->get('cache.paths.image')."/{$prefix}.jp2";
 				@file_put_contents($temp_fn, file_get_contents($url));
