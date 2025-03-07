@@ -23,6 +23,7 @@
 		}
 	},
 	"paths": {
+		"tmp": "./tmp",
 		"output": "./output",
 		"local_source": "PATH"
 	},
