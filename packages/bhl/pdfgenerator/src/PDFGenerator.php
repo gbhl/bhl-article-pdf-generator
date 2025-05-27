@@ -116,7 +116,7 @@ class MakePDF {
 
 			// Get the pages from BHL because maybe I need the file name prefix
 			$page_details = $this->get_bhl_pages($pages);
-			
+
 			// Get the IA idenifier just because we may need it in the error logging
 			$ia_id = '';
 			foreach ($page_details as $p) {
@@ -166,7 +166,7 @@ class MakePDF {
 				if ($this->verbose) { print "Getting Page Images\n"; }
 				$this->get_page_images($page_details, $item['SourceIdentifier']);
 
-								// Calculate the height and width and aspect ratio of each page.
+				// Calculate the height and width and aspect ratio of each page.
 				foreach ($page_details as $p => $page) {
 					if (!$page_details[$p]['JPGFile']) {
 						$this->log->notice("  Segment $id has problems with images. Clearing cache and exiting early. Please try again.", ['pid' => \posix_getpid()]);	
@@ -224,6 +224,7 @@ class MakePDF {
 						$factor = (int)($this->config->get('image.resize') * 100);
 						$xy_factor = $this->config->get('image.resize');
 						if (!file_exists($this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg')) {
+							// TODO convert to native PHP code
 							$cmd = "convert -resize ".$factor."% "
 								."'".$this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg'."' "
 								."'".$this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg'."'";
@@ -601,169 +602,35 @@ class MakePDF {
 		$c = 1;
 		$total = count($pages);
 		foreach ($pages as $p => $rec) {
-			$bc = $pages[$p]['BarCode'];
 			$prefix = $pages[$p]['FileNamePrefix'];
-			$letter = substr($pages[$p]['BarCode'], 0, 1);
-
-			$jp2_zip = $this->config->get('paths.local_source')."/{$letter}/{$bc}/{$bc}_jp2.zip";
-			$jp2_tar = $this->config->get('paths.local_source')."/{$letter}/{$bc}/{$bc}_jp2.tar";
-			$tif_zip = $this->config->get('paths.local_source')."/{$letter}/{$bc}/{$bc}_tif.zip";
-
 			if ($this->verbose) { print "  {$prefix} ($c/$total)..."; }
 
 			$pages[$p]['JPGFile'] = null;
 
 			// Check the Cache file
-			if (file_exists($this->config->get('cache.paths.image')."/{$prefix}.jpg")) {
+			$dest_filename = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
+			if (file_exists($dest_filename) && filesize($dest_filename) > 0) {
 				if ($this->verbose) { print " from Cache.\n"; }
-				$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
-				$got_file = true;
-			}
-			
-			// Check the local JP2 ZIP file
-			if (!$pages[$p]['JPGFile']) {
-				if (file_exists($jp2_zip)) {
-					if ($this->verbose) { print "checking JP2 ZIP\n"; }
-					// Get the list of filenames
-					$zip = new \ZipArchive;
-					if ($zip->open($jp2_zip)) {
-						// Extract them from the ZIP file
-						$ret = $zip->extractTo($this->config->get('cache.paths.image'), "{$bc}_jp2/{$prefix}.jp2");
-						if ($ret) {
-							if ($this->verbose) { print " from JP2 ZIP\n"; }
-							// Convert to JPEG and move to the cache folder
-							$im = new \Imagick ();
-							$im->readImage($this->config->get('cache.paths.image')."/{$bc}_jp2/{$prefix}.jp2");
-							$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
-							$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
-						} else {
-							if ($this->verbose) { print "    $jp2_zip Extraction Failed for {$bc}_jp2/{$prefix}.jp2\n"; }
-						}
-						$zip->close();
-					} else {
-						if ($this->verbose) { print "    $jp2_zip Can't be Opened\n"; }
-					}
-					unset($zip);
-				}
-			}
+				$pages[$p]['JPGFile'] = $dest_filename;
+			} else {
+				if ($this->verbose) { print " from BHL.\n"; }
+				$pages[$p]['JPGFile'] = $dest_filename;
 
-			// Check the local JP2 TAR file
-			if (!$pages[$p]['JPGFile']) {
-				if (file_exists($jp2_tar)) {
-                                        if ($this->verbose) { print "checking JP2 TAR\n"; }
-					$tar = new \Archive_Tar($jp2_tar);
-					if ($tar) {
-						$f_jp2 = $pages[$p]['FileNamePrefix'].'.jp2';
-						$f_jpg = $pages[$p]['FileNamePrefix'].'.jpg';
-						$fp = "{$pages[$p]['BarCode']}_jp2/{$f_jp2}";
-						// Extract them from the ZIP file
-						$ret = $tar->extractList(
-							array("{$pages[$p]['BarCode']}_jp2/{$f_jp2}"), 
-							$this->config->get('cache.paths.image'), 
-							"{$bc}_jp2/"
-						);
-						if ($ret) {
-							if ($this->verbose) { print " from JP2 TAR\n"; }
-							// Convert to JPEG and move to the cache folder
-							$im = new \Imagick ();
-							$im->readImage($this->config->get('cache.paths.image')."/{$prefix}.jp2");
-							$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
-							$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
-						}
-						unset($tar);
-					}
+				@file_put_contents($dest_filename, file_get_contents($pages[$p]['PageImageURL']));
+				if (!file_exists($dest_filename) || filesize($dest_filename) == 0) {
+					$pages[$p]['JPGFile'] = null;
+					if ($this->verbose) { print "    ERROR: Could not find file {$prefix}\n"; }
+					$this->log->error("Could not find file {$prefix}", ['pid' => \posix_getpid()]);
+					throw new \Exception("Item {$identifier}: Could not find file {$prefix}");
 				}
-			}
-
-			// Check the local TIF ZIP file
-			if (!$pages[$p]['JPGFile']) {
-				if (file_exists($tif_zip)) {
-                                        if ($this->verbose) { print "checking TIF ZIP\n"; }
-					// Get the list of filenames
-					$zip = new \ZipArchive;
-					if ($zip->open($tif_zip)) {
-						// Extract them from the ZIP file
-						$ret = $zip->extractTo($this->config->get('cache.paths.image'), "{$bc}_tif/{$prefix}.tif");
-						if ($ret) {
-							if ($this->verbose) { print " from TIF ZIP\n"; }
-							// Convert to JPEG and move to the cache folder
-							$im = new \Imagick ();
-							$im->readImage($this->config->get('cache.paths.image')."/{$bc}_tif/{$prefix}.tif");
-							$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
-							$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
-						} else {
-							if ($this->verbose) { print "    $tif_zip Extraction Failed for {$bc}_tif/{$prefix}.tif\n"; }
-						}
-						$zip->close();
-					} else {
-						if ($this->verbose) { print "    $tif_zip Can't be Opened\n"; }
-					}
-					unset($zip);
-				}
-			}
-
-			// fall back to getting it from IA's TIF ZIP
-			if (!$pages[$p]['JPGFile']) {
-				if ($this->verbose) { print "checking at IA TIF ZIP\n"; }
-				$url = "https://archive.org/download/{$bc}/{$bc}_tif.zip/{$bc}_tif/{$prefix}.tif";
-				$temp_fn = $this->config->get('cache.paths.image')."/{$prefix}.tif";
-				@file_put_contents($temp_fn, file_get_contents($url));
-				clearstatcache(); // Stupid, but required for getting filesize() of local paths
-				if (file_exists($temp_fn) && filesize($temp_fn) > 0) {
-					if ($this->verbose) { print " from IA TIF ZIP\n"; }
-					$im = new \Imagick ();
-					$im->readImage($temp_fn);
-					$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
-					$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
-				}
-			}
-
-			// fall back to getting it from IA's JP2 ZIP file
-			if (!$pages[$p]['JPGFile']) {
-                                if ($this->verbose) { print "checking at IA JP2 ZIP\n"; }
-				$url = "https://archive.org/download/{$bc}/{$bc}_jp2.zip/{$bc}_jp2/{$prefix}.jp2";
-				$temp_fn = $this->config->get('cache.paths.image')."/{$prefix}.jp2";
-				@file_put_contents($temp_fn, file_get_contents($url));
-				clearstatcache(); // Stupid, but required for getting filesize() of local paths
-				if (file_exists($temp_fn) && filesize($temp_fn) > 0) {
-					if ($this->verbose) { print " from IA JP2 ZIP\n"; }
-					$im = new \Imagick ();
-					$im->readImage($temp_fn);
-					$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
-					$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
-				}
-			}
-
-			// fall back even more to getting it from IA's JP2 TAR file
-			if (!$pages[$p]['JPGFile']) {
-                                if ($this->verbose) { print "checking JP2 TAR\n"; }
-				$url = "https://archive.org/download/{$bc}/{$bc}_jp2.tar/{$bc}_jp2/{$prefix}.jp2";
-				$temp_fn = $this->config->get('cache.paths.image')."/{$prefix}.jp2";
-				@file_put_contents($temp_fn, file_get_contents($url));
-				clearstatcache(); // Stupid, but required for getting filesize() of local paths
-				if (file_exists($temp_fn) && filesize($temp_fn) > 0) {
-					if ($this->verbose) { print " from IA JP2 TAR\n"; }
-					$im = new \Imagick ();
-					$im->readImage($temp_fn);
-					$im->writeImage($this->config->get('cache.paths.image')."/{$prefix}.jpg");
-					$pages[$p]['JPGFile'] = $this->config->get('cache.paths.image')."/{$prefix}.jpg";
-				}
-			}
-
-			// This is pretty bad, let's log an error
-			if (!$pages[$p]['JPGFile']) {
-				if ($this->verbose) { print "    ERROR: Could not find file {$prefix}\n"; }
-				$this->log->error("Could not find file {$prefix}", ['pid' => \posix_getpid()]);
-				throw new \Exception("Item {$identifier}: Could not find file {$prefix}");
 			}
 
 			// Verify this is an image!
 			if (exif_imagetype($pages[$p]['JPGFile']) != IMAGETYPE_JPEG) {
 				if ($this->verbose) { print "    File is not a JPEG: {$prefix}.jpg\n"; }
+				$pages[$p]['JPGFile'] = null;
 				$this->log->notice("Item {$identifier}: File is not a JPEG: {$prefix}.jpg", ['pid' => \posix_getpid()]);
 				throw new \Exception("Item {$identifier}: File is not a JPEG: {$prefix}.jpg");
-				$pages[$p]['JPGFile'] = null;
-				$got_file = false;
 			}
 			$c++;
 		}
@@ -847,6 +714,7 @@ class MakePDF {
 			$stmt->execute($pages);
 			$rows = [];
 			while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+				$row['PageImageURL'] = 'https://www.biodiversitylibrary.org/pageimage/'.$row['PageID'];
 				$rows['pageid-'.$row['PageID']] = $row;
 			}
 			return $rows;
@@ -1020,7 +888,6 @@ class MakePDF {
 	  Be Nice to the disk. It is your friend.
 	 */
 	private function clean_cache() {
-		return;
 		`find {$this->config->get('cache.paths.image')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
 		`find {$this->config->get('cache.paths.resize')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
 		`find {$this->config->get('cache.paths.pdf')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
