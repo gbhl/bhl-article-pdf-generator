@@ -1,17 +1,8 @@
 {
 	"bhl": {
-		"api_key": "STRING",
-		"db": {
-			"type": "dblib",
-			"host": "DATABASE.EXAMPLE.COM",
-			"dbname": "DATABASE",
-			"port": "1433",
-			"charset": "utf8",
-			"username": "USERNAME",
-			"password": "PASSWORD"
-		}
+		"api_key": "STRING"
 	},
-  "max_memory": "1536M",
+	"max_memory": "1536M",
 	"cache": {
 		"lifetime": 2,
 		"paths": {
@@ -19,7 +10,8 @@
 			"image": "./cache/image",
 			"resize": "./cache/resize",
 			"json": "./cache/json",
-			"djvu": "./cache/djvu"
+			"djvu": "./cache/djvu",
+			"hocr": "./cache/hocr"
 		}
 	},
 	"paths": {
