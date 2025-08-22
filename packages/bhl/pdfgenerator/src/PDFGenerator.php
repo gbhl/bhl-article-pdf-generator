@@ -10,7 +10,7 @@ use Monolog\Formatter\LineFormatter;
 use setasign\Fpdi\Tfpdf\Fpdi;
 use setasign\Fpdi\PdfReader;
 
-require_once(dirname(__FILE__) . '/../lib/djvu.php');
+require_once(dirname(__FILE__) . '/../lib/hOCR.php');
 
 define("_SYSTEM_TTFONTS", dirname(__FILE__).'/../assets/noto-sans/');
 
@@ -28,6 +28,7 @@ class MakePDF {
 	private $config;
 	private $log;
 	private $verbose = false;
+	private $item;
 
 	// Size of an A4 page
 	private $a4_width_mm = 210; // millimeters
@@ -110,19 +111,15 @@ class MakePDF {
 			$this->log->notice("Processing segment $id (".count($pages)." pages) [".trim($mode)."]...", ['pid' => \posix_getpid()]);
 			// Get the info for the part from BHL
 			if ($this->verbose) { print "Getting BookID {$part['ItemID']}\n"; }
-			$item = $this->get_bhl_item($part['ItemID']);
-			if (!$item) { return; }
-			$item = $item['Result'][0]; // deference this for ease of use
+			$this->item = $this->get_bhl_item($part['ItemID']);
+			if (!$this->item) { return; }
+			$this->item = $this->item['Result'][0]; // deference this for ease of use
 
 			// Get the pages from BHL because maybe I need the file name prefix
 			$page_details = $this->get_bhl_pages($pages);
 
 			// Get the IA idenifier just because we may need it in the error logging
-			$ia_id = '';
-			foreach ($page_details as $p) {
-			    $ia_id = $p['BarCode'];
-			    break;
-			}
+			$ia_id = $this->item['SourceIdentifier'];
 	
 			$pdf = null;
 			// If only metadata changed, and the file can't be found,
@@ -140,31 +137,37 @@ class MakePDF {
 			if ($pages_changed) {
 
 				// Get our PDF
-				if ($this->verbose) { print "Getting DJVU file\n"; }
-				$djvus = $this->get_djvus($page_details);
-
-				// Error handling
-				if (!$djvus) {
-					$this->log->error("  Could not get DJVU file or it's empty.", ['pid' => \posix_getpid()]);
-					if ($this->verbose) { print "  ERROR: Could not get DJVU file or it's empty.\n"; }
-					throw new \Exception("Exception while processing segment $id: Could not get DJVU file for $ia_id");
-					return false;
-				}
-				if ($this->verbose) { print "Reading DJVU file(s)\n"; }
-				foreach ($djvus as $d => $rec) {
-					$djvu = new \PhpDjvu($djvus[$d]['path']);
-					$djvus[$d]['djvu'] = $djvu;
-				}
-				unset($djvu);
-				if (count($djvus) > 1) {
-					$this->log->notice("  Segment $id spans multiple Books.", ['pid' => \posix_getpid()]);
-					if ($this->verbose) { print "  WARNING: Segment $id spans multiple Books.\n"; }
-				}
-				
+				if ($this->verbose) { print "Getting HOCR file\n"; }
+				$hocrs = $this->get_hocrs($page_details);
 
 				// Get our Images
 				if ($this->verbose) { print "Getting Page Images\n"; }
-				$this->get_page_images($page_details, $item['SourceIdentifier']);
+				if (!$hocrs) {
+					$this->get_page_images($page_details, $this->item['SourceIdentifier'], true);
+					$hocrs = $this->get_hocrs($page_details);
+				} else {
+					$this->get_page_images($page_details, $this->item['SourceIdentifier']);
+				}
+
+				// Error handling
+				if (!$hocrs) {
+					$this->log->error("  Could not get HOCR file or it's empty.", ['pid' => \posix_getpid()]);
+					if ($this->verbose) { print "  ERROR: Could not get HOCR file or it's empty.\n"; }
+					throw new \Exception("Exception while processing segment $id: Could not get HOCR file for $ia_id");
+				}
+				if ($this->verbose) { print "Reading HOCR file(s)\n"; }
+				foreach ($hocrs as $h => $rec) {
+					$hocr = new \hOCRParser($hocrs[$h]['path']);
+					$hocrs[$h]['hocr'] = $hocr;
+				}
+				unset($hocr);
+				if (count($hocrs) > 1) {
+					$this->log->notice("  Segment $id spans multiple Books.", ['pid' => \posix_getpid()]);
+					if ($this->verbose) { print "  WARNING: Segment $id spans multiple Books.\n"; }
+					die;
+				}
+				
+
 
 				// Calculate the height and width and aspect ratio of each page.
 				foreach ($page_details as $p => $page) {
@@ -225,6 +228,7 @@ class MakePDF {
 						$xy_factor = $this->config->get('image.resize');
 						if (!file_exists($this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg')) {
 							// TODO convert to native PHP code
+							// TODO Use VIPS instead
 							$cmd = "convert -resize ".$factor."% "
 								."'".$this->config->get('cache.paths.image').'/'.$p['FileNamePrefix'].'.jpg'."' "
 								."'".$this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg'."'";
@@ -233,13 +237,12 @@ class MakePDF {
 						$p['JPGFile'] = $this->config->get('cache.paths.resize').'/'.$p['FileNamePrefix'].'.jpg';
 					}
 					$pdf->AddPage($p['Orientation'], array($p['WidthMM'], $p['HeightMM']));
-					$pdf->SetFont('NotoSans', '', 10);
+					$pdf->SetFont('NotoSans', '', 8);
 					$pdf->SetTextColor(0, 0, 0);
 					
 					// Get the lines, Add the text to the page
-					$djvu = $djvus[$p['BarCode']]['djvu'];
-					$prefix = $djvu->GetPagebySequence($p['SequenceOrder']-1);
-					$lines = $djvu->GetPageLines($prefix, $this->config->get('image.resize'), $p['DPMM']);
+					$hocr = $hocrs[$p['BarCode']]['hocr'];
+					$lines = $hocr->GetPageLines($p['FileNamePrefix'], $this->config->get('image.resize'), $p['DPMM']);
 					foreach ($lines as $l) {
 						$pdf->setXY($l['x'], $l['y']);
 						$pdf->Cell($l['w'], $l['h'], $l['text'], 1, 0, 'FJ'); // FJ = force full justifcation
@@ -253,7 +256,7 @@ class MakePDF {
 				$pdf->SetDisplayMode('fullpage','two');
 
 				// Add the "cover" page...at the end
-				$this->add_cover_page($pdf, $part, $item);
+				$this->add_cover_page($pdf, $part);
 
 			}
 			if ($metadata_changed) {
@@ -277,13 +280,13 @@ class MakePDF {
 				$pdf->AddFont('NotoSans','IB', 'NotoSans-BoldItalic.ttf', true);
 
 				// Add the "cover" page...at the end
-				$this->add_cover_page($pdf, $part, $item);
+				$this->add_cover_page($pdf, $part);
 
 			}
 
 			// Set the title metadata
 			// For whatever reason, the PDF expects ISO-8859-1 even though we are using UTF-8
-			$pdf->SetTitle(utf8_decode($this->get_citation($part, $item)));
+			$pdf->SetTitle(utf8_decode($this->get_citation($part)));
 
 			// Set the Author Metadata
 			$temp = [];
@@ -308,7 +311,7 @@ class MakePDF {
 
 			// All done!
 			$pdf->Output('F',$output_filename);
-			$this->pdf_add_xmp($part, $item, $output_filename);
+			$this->pdf_add_xmp($part, $output_filename);
 			chmod($output_filename, 0644);
 			if ($this->verbose) { print "PDF for segment $id finished\n"; }
 			$this->log->notice("PDF for segment $id finished.", ['pid' => \posix_getpid()]);
@@ -324,7 +327,7 @@ class MakePDF {
 	/*
 	 *
 	 */
-	private function add_cover_page($pdf, $part, $item) {
+	private function add_cover_page($pdf, $part) {
 		$image = dirname(__FILE__).'/../assets/BHL-logo.png';
 		$pdf->AddPage('P', array($this->a4_width_mm, $this->a4_height_mm));
 		$pdf->SetMargins('20','20');
@@ -450,21 +453,21 @@ class MakePDF {
 		$font_size = 11;
 		
 		// RIGHTS STATUS
-		if (isset($item['HoldingInstitution']) && $item['HoldingInstitution']) {
+		if (isset($this->item['HoldingInstitution']) && $this->item['HoldingInstitution']) {
 			$pdf->SetFont('NotoSans', 'B', $font_size);
 			$pdf->Write($line_height, 'Holding Institution ');
 			$pdf->Ln($line_height, '');
 			$pdf->SetFont('NotoSans', '', $font_size);
-			$pdf->Write($line_height, $item['HoldingInstitution']);
+			$pdf->Write($line_height, $this->item['HoldingInstitution']);
 			$pdf->Ln($line_height, '');
 			$pdf->Ln($line_height, '');
 	  }
-		if (isset($item['Sponsor']) && $item['Sponsor']) {
+		if (isset($this->item['Sponsor']) && $this->item['Sponsor']) {
 			$pdf->SetFont('NotoSans', 'B', $font_size);
 			$pdf->Write($line_height, 'Sponsored by ');
 			$pdf->Ln($line_height, '');
 			$pdf->SetFont('NotoSans', '', $font_size);
-			$pdf->Write($line_height, $item['Sponsor']);
+			$pdf->Write($line_height, $this->item['Sponsor']);
 			$pdf->Ln($line_height, '');
 			$pdf->Ln($line_height, '');
 		}
@@ -477,10 +480,10 @@ class MakePDF {
 		$pdf->SetFont('NotoSans', '', $font_size);
 		$pdf->Write($line_height, 'Copyright Status: '.$part['RightsStatus']);
 		$pdf->Ln($line_height, '');
-		if (isset($item['RightsHolder']) && $item['RightsHolder']) {
+		if (isset($this->item['RightsHolder']) && $this->item['RightsHolder']) {
 			$pdf->SetTextColor(0, 0, 0); // Black
 			$pdf->SetFont('NotoSans', '', $font_size); // Regular Font
-			$pdf->Write($line_height, 'Rights Holder: '.$item['RightsHolder']);
+			$pdf->Write($line_height, 'Rights Holder: '.$this->item['RightsHolder']);
 			$pdf->Ln($line_height, '');
 		}
 		if (isset($part['LicenseUrl']) && $part['LicenseUrl']) {
@@ -490,13 +493,13 @@ class MakePDF {
 			$pdf->Write($line_height, $part['LicenseUrl'], $part['LicenseUrl']);
 			$pdf->Ln($line_height, '');
 		}
-		if (isset($item['Rights']) && $item['Rights']) {
+		if (isset($this->item['Rights']) && $this->item['Rights']) {
 			$pdf->SetTextColor(0, 0, 0); // Black
 			$pdf->SetFont('NotoSans', '', $font_size); // Regular Font
 			$pdf->Write($line_height, 'Rights: ');
 			$pdf->SetFont('NotoSans', 'U', $font_size); // Underline Regular
 			$pdf->SetTextColor(76, 103, 155); // Blue
-			$pdf->Write($line_height, $item['Rights'], $item['Rights']);
+			$pdf->Write($line_height, $this->item['Rights'], $this->item['Rights']);
 			$pdf->Ln($line_height, '');
 		}
 		$pdf->Ln($line_height, '');
@@ -545,24 +548,24 @@ class MakePDF {
 	}
 
 	/*
-		GET DJVU XML Files
-		Download the DJVU file(s) from the Internet Archive
+		GET HOCR HTML Files
+		Download the HOCR file(s) from the Internet Archive
 		There may be more than one, so let's be extra careful
 	 */
-	private function get_djvus($pages) {
+	private function get_hocrs($pages) {
 		$ret = [];
 		foreach ($pages as $p) {
 			$identifier = $p['BarCode'];
 			if (!isset($ret[$identifier])) {
 				$letter = substr($identifier,0,1);
-				$filename = $identifier.'_djvu.xml';
-				$cache_path = $this->config->get('cache.paths.djvu').'/'.$filename;
+				$filename = $identifier.'_hocr.html';
+				$cache_path = $this->config->get('cache.paths.hocr').'/'.$filename;
 				if (!file_exists($cache_path)) {
-					$djvu = $this->config->get('paths.local_source')."/{$letter}/{$identifier}/{$identifier}_djvu.xml";
+					$hocr = $this->config->get('paths.local_source')."/{$letter}/{$identifier}/{$identifier}_hocr.xml";
 					// Do we have the file locally?
-					if (file_exists($djvu)) {
+					if (file_exists($hocr)) {
 						// Do we have it on the Isilon?
-						copy($djvu, $cache_path);
+						copy($hocr, $cache_path);
 					} else {
 						// Get it from the internet archive
 						$url = 'https://archive.org/download/'.$identifier.'/'.$filename;
@@ -572,11 +575,11 @@ class MakePDF {
 							if ($contents) {
 								file_put_contents($cache_path, $contents);
 							} else {
-								if ($this->verbose) { print "  ERROR: Could not get DJVU from IA ($identifier)\n"; }
+								if ($this->verbose) { print "  ERROR: Could not get HOCR from IA ($identifier)\n"; }
 								return null;	
 							}							
 						} catch (Exception $e) {
-							if ($this->verbose) { print "  ERROR: Unable to get DJVU from IAi ($identifier): ".$e->getMessage()."\n"; }
+							if ($this->verbose) { print "  ERROR: Unable to get HOCR from IAi ($identifier): ".$e->getMessage()."\n"; }
 							return null;
 						}
 						
@@ -585,7 +588,7 @@ class MakePDF {
 				$ret[$identifier] = array('path' => $cache_path);
 				if (filesize($cache_path) == 0) {
 					unlink($cache_path);
-					if ($this->verbose) { print "  DJVU Cache file is empty\n"; }
+					if ($this->verbose) { print "  HOCR Cache file is empty\n"; }
 					return null;
 				}
 			}
@@ -598,7 +601,7 @@ class MakePDF {
 		Given an array of Page IDs, download the images from IA
 		(future versions of this will grab the image from our TAR file)
 	 */
-	private function get_page_images(&$pages, $identifier) {
+	private function get_page_images(&$pages, $identifier, $generate_ocr = false) {
 		$c = 1;
 		$total = count($pages);
 		foreach ($pages as $p => $rec) {
@@ -620,7 +623,7 @@ class MakePDF {
 				if (!file_exists($dest_filename) || filesize($dest_filename) == 0) {
 					$pages[$p]['JPGFile'] = null;
 					if ($this->verbose) { print "    ERROR: Could not find file {$prefix}\n"; }
-					$this->log->error("Could not find file {$prefix}", ['pid' => \posix_getpid()]);
+					print "[ERROR] Could not find file {$prefix} (pid => ".\posix_getpid().")";
 					throw new \Exception("Item {$identifier}: Could not find file {$prefix}");
 				}
 			}
@@ -629,10 +632,66 @@ class MakePDF {
 			if (exif_imagetype($pages[$p]['JPGFile']) != IMAGETYPE_JPEG) {
 				if ($this->verbose) { print "    File is not a JPEG: {$prefix}.jpg\n"; }
 				$pages[$p]['JPGFile'] = null;
-				$this->log->notice("Item {$identifier}: File is not a JPEG: {$prefix}.jpg", ['pid' => \posix_getpid()]);
+				print "Item {$identifier}: File is not a JPEG: {$prefix}.jpg (pid => ".\posix_getpid().")";
 				throw new \Exception("Item {$identifier}: File is not a JPEG: {$prefix}.jpg");
 			}
 			$c++;
+		}
+
+		if ($generate_ocr) {
+			if ($this->verbose) { print "    Generating hOCR with Tesseract\n"; }
+			// For each page run tesseract
+			foreach ($pages as $p => $rec) {
+				if (!file_exists('./cache/hocr/'.$rec['FileNamePrefix'].'.hocr')) {
+					$url = 'https://archive.org/metadata/'.$this->item['SourceIdentifier'].'/metadata/language';
+					$lang = json_decode(file_get_contents($url),true);
+					$lang = ($lang['result'] != 'UND' ? '-l '.$lang : '');
+
+					if ($this->verbose) { print "      ".$rec['FileNamePrefix']."\n"; }
+					$cmd = "/usr/bin/tesseract $lang -c tessedit_page_number=0 -c ".
+						"tessedit_create_txt=0 -c tessedit_create_hocr=1 ".
+						"-c hocr_char_boxes=0 -c hocr_font_info=1 ".
+						"-c thresholding_method=0 ".$rec['JPGFile']." ./cache/hocr/".$rec['FileNamePrefix'];
+					`$cmd`;
+				}
+			}
+			// Combine the HOCR into one file
+			if ($this->verbose) { print "    Combining to final hOCR file\n"; }
+			$fo = fopen('./cache/hocr/'.$this->item['SourceIdentifier'].'_hocr.html','w');
+			fwrite($fo, '<?xml version="1.0" encoding="UTF-8"?>'."\n");
+
+			fwrite($fo, '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"'."\n");
+			fwrite($fo, '    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'."\n");
+			fwrite($fo, '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">'."\n");
+			fwrite($fo, ' <head>'."\n");
+			fwrite($fo, '  <title></title>'."\n");
+			fwrite($fo, '  <meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>'."\n");
+			fwrite($fo, '  <meta name="ocr-system" content="tesseract 5.x.x" />'."\n");
+			fwrite($fo, '  <meta name="ocr-capabilities" content="ocr_page ocr_carea ocr_par ocr_line ocrx_word ocrp_wconf ocrp_lang ocrp_dir ocrp_font ocrp_fsize"/>'."\n");
+			fwrite($fo, ' </head>'."\n");
+			fwrite($fo, ' <body>'."\n");
+
+			foreach ($pages as $p => $rec) {
+
+				$hocr = new \DOMDocument();
+				$hocr->loadHTMLFile('./cache/hocr/'.$rec['FileNamePrefix'].'.hocr');
+				$divs = $hocr->getElementsByTagName('div');
+				foreach ($divs as $d) {
+					if ($d->className == 'ocr_page') {
+						// Reset the ID because they can't be duplicated
+						$d->setAttribute('id','page_'.$rec['SequenceOrder']);
+						fwrite($fo, $hocr->saveHTML($d)."\n");
+					}
+				}
+			}
+			fwrite($fo, ' </body>'."\n");
+			fwrite($fo, ' </html>'."\n");
+			fclose($fo);
+			if ($this->verbose) { print "    Cleaning up\n"; }
+			$old = glob('./cache/hocr/'.$this->item['SourceIdentifier'].'_*.hocr');
+			foreach ($old as $f) {
+				unlink($f);
+			}
 		}
 	}
 
@@ -643,7 +702,7 @@ class MakePDF {
 	private function get_bhl_segment($id) {
 		$url = 'https://www.biodiversitylibrary.org/api3?op=GetPartMetadata&id='.$id.'&format=json&pages=t&names=t&apikey='.$this->config->get('bhl.api_key');
 		$data = file_get_contents($url);
-		$object = json_decode($data, true, 512, JSON_OBJECT_AS_ARRAY);
+		$object = json_decode($data, true);
 
 		# check our results
 		if (strtolower($object['Status']) == 'ok') {
@@ -666,9 +725,9 @@ class MakePDF {
 	 */
 	private function get_bhl_item($id) {
 		# read from the cache
-		$url = 'https://www.biodiversitylibrary.org/api3?op=GetItemMetadata&id='.$id.'&format=json&pages=f&names=f&parts=f&apikey='.$this->config->get('bhl.api_key');
+		$url = 'https://www.biodiversitylibrary.org/api3?op=GetItemMetadata&id='.$id.'&format=json&pages=t&names=f&parts=f&apikey='.$this->config->get('bhl.api_key');
 		$data = file_get_contents($url);
-		$object = json_decode($data, true, 512, JSON_OBJECT_AS_ARRAY);
+		$object = json_decode($data, true);
 
 		# check our results
 		if (strtolower($object['Status']) == 'ok') {
@@ -690,65 +749,29 @@ class MakePDF {
 		For a given item id get the pages at BHL
 	 */
 	private function get_bhl_pages($pages = array()) {
-		
-		if (!$this->bhl_dbh) {
-			try {
-				$this->bhl_dbh = new \PDO($this->config->get('bhl.db.dsn'), $this->config->get('bhl.db.username'), $this->config->get('bhl.db.password'));
-			} catch (Exception $e) {
-				echo "Failed to get DB handle: ".$e->getMessage()."\n";
-				exit;
-			}
-		}
-
+		$rows = [];
 		if (count($pages) > 0) {
-			$placeholders = str_repeat('?, ', count($pages)-1).'?';
-			$stmt = $this->bhl_dbh->prepare(
-				"SELECT p.PageID, p.FileNamePrefix, ip.ItemID, ip.SequenceOrder, b.BookID, b.BarCode
-				FROM Page p 
-				INNER JOIN ItemPage ip ON p.PageID = ip.PageID
-				LEFT OUTER JOIN Book b On ip.ItemID = b.ItemID
-				WHERE p.PageID IN ({$placeholders}) 
-				AND b.BookID IS NOT NULL
-				ORDER BY ip.sequenceorder"
-			);
-			$stmt->execute($pages);
-			$rows = [];
-			while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
-				$row['PageImageURL'] = 'https://www.biodiversitylibrary.org/pageimage/'.$row['PageID'];
-				$rows['pageid-'.$row['PageID']] = $row;
+			foreach ($pages as $page_id) {
+				$seq = -1;
+
+				for ($i=0; $i<count($this->item['Pages']); $i++) {
+					if ($this->item['Pages'][$i]['PageID'] == $page_id) {
+						$seq = $i;
+						break;
+					}
+				}
+				$rows['pageid-'.$page_id] = array(
+					'PageID' => $page_id,
+					'FileNamePrefix' => sprintf("%s_%04d", $this->item['SourceIdentifier'], $seq),
+					'ItemID' => $this->item['ItemID'], 
+					'SequenceOrder' => $seq,
+					'BarCode' => $this->item['SourceIdentifier'],
+					'PageImageURL' => 'https://www.biodiversitylibrary.org/pageimage/'.$page_id
+				);
 			}
+			// print_r($rows);
 			return $rows;
 		}
-	}
-
-	/* 
-		GET ALL SEGMENTS
-		For a given item id get the pages at BHL
-	 */
-	public function get_all_segments() {		
-		if (!$this->bhl_dbh) {
-			try {
-				$this->bhl_dbh = new \PDO($this->config->get('bhl.db.dsn'), $this->config->get('bhl.db.username'), $this->config->get('bhl.db.password'));
-			} catch (Exception $e) {
-				echo "Failed to get DB handle: ".$e->getMessage()."\n";
-				exit;
-			}
-		}
-		$stmt = $this->bhl_dbh->prepare(
-			"SELECT SegmentID 
-			 FROM Segment s 
-			 INNER JOIN item i ON s.ItemId = i.ItemID
-			 WHERE i.ItemStatusID = 40
-			 AND s.RedirectSegmentID IS NULL
-			 AND (s.url IS NULL OR s.url = '')
-			 ORDER BY s.SegmentID"
-		);
-		$stmt->execute();
-		$ids = [];
-		while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
-			$ids[] = $row['SegmentID'];
-		}
-		return $ids;
 	}
 
 	/* 
@@ -784,7 +807,7 @@ class MakePDF {
 	/*
 	  Inject XMP metadata into PDF
 	 */
-	private function pdf_add_xmp($part, $item, $pdf) {	
+	private function pdf_add_xmp($part, $pdf) {	
 		$metadata = [];
 		// $metadata[] = "-XMP:URL=".escapeshellarg($part['PartUrl']);	
 		if (isset($part['Doi'])) {
@@ -792,7 +815,7 @@ class MakePDF {
 		}
 
 		// Title
-		$metadata[] = "-XMP:Title=".escapeshellarg($this->get_citation($part, $item));
+		$metadata[] = "-XMP:Title=".escapeshellarg($this->get_citation($part));
 		
 		// Authors
 		foreach ($part['Authors'] as $a) {
@@ -828,9 +851,9 @@ class MakePDF {
 			if (isset($part['RightsStatus'])) {
 				$metadata[] = "-XMP:Rights=".escapeshellarg($part['RightsStatus']);
 			}
-			if (isset($item['RightsHolder'])) {
-				$metadata[] = "-XMP:RightsOwner=".escapeshellarg($item['RightsHolder']);
-				$metadata[] = "-XMP:License=".escapeshellarg($item['LicenseUrl']);
+			if (isset($this->item['RightsHolder'])) {
+				$metadata[] = "-XMP:RightsOwner=".escapeshellarg($this->item['RightsHolder']);
+				$metadata[] = "-XMP:License=".escapeshellarg($this->item['LicenseUrl']);
 			}
 			if (isset($part['Names'])) {
 				if (is_array($part['Names'])) {
@@ -892,10 +915,10 @@ class MakePDF {
 		`find {$this->config->get('cache.paths.resize')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
 		`find {$this->config->get('cache.paths.pdf')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
 		`find {$this->config->get('cache.paths.json')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
-		`find {$this->config->get('cache.paths.djvu')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
+		`find {$this->config->get('cache.paths.hocr')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
 	}
 
-	private function get_citation($part, $item) {
+	private function get_citation($part) {
 
 		// PREPROCESS THE AUTHORS
 		$citation = '';
