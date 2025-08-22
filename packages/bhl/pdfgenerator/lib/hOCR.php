@@ -1,0 +1,168 @@
+<?php
+/** 
+ * hOCR Parser
+ * 
+ * Bare minimum to parse hOCR into pages lines with text and x/y and height/width data
+ * 
+ */
+
+class hOCRParser {
+
+	public $filename = '';
+	public $pages = [];
+	public $page_sequences = [];
+	private $xml;
+
+
+    public function __construct($filename = null) {
+		$this->filename = $filename;
+		$this->_init();
+	}
+
+	public function File($filename = '') {
+		$this->filename = $filename;
+		$this->_init();
+	}
+
+    public function GetPagebySequence($seq) {
+		if (isset($this->page_sequences[$seq])) {
+			return $this->page_sequences[$seq];
+		}
+		return null;
+    }
+
+    public function GetPageLines($page, $factor = 1, $dpi = 0) {
+		if (!isset($this->pages[$page])) {
+			throw new Exception('Page ID '.$page.' not found.');
+		}
+		if ($dpi == 0) { $dpi = $page['dpi']; }
+		
+		$page = $this->pages[$page];
+		$ret = [];
+		foreach ($page['lines'] as $line) {
+			$ret[] = array(
+				'words'=> $line['words'],
+				'text' => $line['text'],
+				'x'    => $line['x1'] * $factor / $dpi,
+				'y'    => $line['y1'] * $factor / $dpi,
+				'w'    => ($line['x2'] - $line['x1']) * $factor  / $dpi,
+				'h'    => ($line['y2'] - $line['y1']) * $factor  / $dpi,
+			);
+		}
+		return $ret;
+
+    }
+
+	public function GetPageWords($page, $factor = 1, $dpi = 0) {
+		if (!isset($this->pages[$page])) {
+			throw new Exception('Page ID '.$page.' not found.');
+		}
+		if ($dpi == 0) { $dpi = $page['dpi']; }
+		$page = $this->pages[$page];
+
+		$ret = [];
+		foreach ($page['lines'] as $l) {
+			foreach ($l['words'] as $w) {
+				$ret[] = array(
+					'text' => $w['text'],
+					'x' => $w['x1'] * $factor / $dpi,
+					'y' => $w['y1'] * $factor / $dpi,
+					'w' => ($w['x2'] - $w['x1']) * $factor / $dpi,
+					'h' => ($w['y2'] - $w['y1']) * $factor / $dpi,
+				);
+			}
+		}
+		return $ret;
+	}
+
+	private function _init() {
+		if ($this->filename) {
+			$this->xml = new DOMDocument();
+			 // hOCR uses repeated IDs, suppress warnings with LIBXML_NOERROR
+			$this->xml->loadHTMLFile($this->filename, LIBXML_NOERROR);
+			$this->_parse_pages();
+		}
+	}
+
+	private function _parse_pages() {
+		// Cycle through the pages
+		$seq = 1;
+		
+		foreach ($this->xml->getElementsByTagName('div') as $d) {
+			if ($d->className == 'ocr_page') {
+				$dpi = -1;
+				$page_name = '';
+				if (preg_match("#image \"(.*?)\";#", $d->getAttribute('title'), $matches)) {
+					$page_name = pathinfo($matches[1], PATHINFO_FILENAME);
+				}
+				$page_lines = $this->_parse_words($d);
+
+				$this->pages[$page_name] = array(
+					'name' => $page_name,
+					'dpi' => $dpi,
+					'lines' => $page_lines,
+					'sequence' => $seq
+				);
+				$seq++;
+				$this->page_sequences[] = $page_name;
+			}
+		}
+	}
+
+	private function _parse_words($page) {
+		$ret = [];
+
+		foreach ($page->getElementsByTagName('p') as $p) { // PARAGRAPH
+
+			if ($p->className == 'ocr_par') {
+				foreach ($p->getElementsByTagName('span') as $l) { // LINE
+					if ($l->className == 'ocr_line' || $l->className == 'ocr_caption'||
+					    $l->className == 'ocr_textfloat'|| $l->className == 'ocr_header') {
+						$words = [];
+						$line_text = [];
+						$min_w = 10000000;
+						$min_h = 10000000;
+						$max_w = 0;
+						$max_h = 0;
+
+						foreach ($l->getElementsByTagName('span') as $w) { // WORD
+							if ($w->className == 'ocrx_word') {
+								// Get the word coordinates. 
+								// The coordinates are in the order: (X1,Y2,X2,Y1,Unused)
+								$coords = [];
+								if (preg_match("#bbox (\d+) (\d+) (\d+) (\d+);#", $w->getAttribute('title'), $matches)) {
+									$coords[0] = $matches[1];
+									$coords[1] = $matches[2];
+									$coords[2] = $matches[3];
+									$coords[3] = $matches[4];
+								}
+								$words[] = array(
+									'text' => $w->nodeValue,
+									'x1' => $coords[0],
+									'y1' => $coords[1],
+									'x2' => $coords[2],
+									'y2' => $coords[3]
+								);
+								$line_text[] = $w->nodeValue;
+								if ($min_w > $coords[0]) { $min_w = $coords[0]; }
+								if ($min_h > $coords[1]) { $min_h = $coords[1]; }
+								if ($max_w < $coords[2]) { $max_w = $coords[2]; }
+								if ($max_h < $coords[3]) { $max_h = $coords[3]; }
+							}
+						}
+						$ret[] = array(
+							'words' => $words,
+							'text' => implode(' ', $line_text),
+							'x1' => $min_w,
+							'y1' => $min_h,
+							'x2' => $max_w,
+							'y2' => $max_h
+						);
+					}
+				}
+			}
+		}
+		return $ret;
+	}
+
+}
