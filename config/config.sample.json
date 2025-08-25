@@ -2,6 +2,7 @@
 	"bhl": {
 		"api_key": "STRING"
 	},
+	"exiftool": "/usr/bin/exiftool",
 	"max_memory": "1536M",
 	"cache": {
 		"lifetime": 2,

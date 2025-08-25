@@ -75,6 +75,14 @@ class MakePDF {
 			if (!file_exists($this->config->get('paths.output').'/'.$L1.'/'.$L2)) {
 				mkdir($this->config->get('paths.output').'/'.$L1.'/'.$L2, 0755, true);
 			}
+			
+			if ($this->config->get('overwrite_existing') === 0) {
+				if (file_exists($output_filename)) {
+					if ($this->verbose) { print "Segment $id already exists and we are not overwriting. Exiting.\n"; }
+					$this->log->notice("Segment $id already exists and we are not overwriting. Exiting.", ['pid' => \posix_getpid()]);
+					return;
+				}
+			}
 
 			// If it doesn't exist, make sure we recreate from scratch.
 			if (!file_exists($output_filename)) {
@@ -136,38 +144,31 @@ class MakePDF {
 			// skip all this.
 			if ($pages_changed) {
 
-				// Get our PDF
+				// Get Images
+				if ($this->verbose) { print "Getting Page Images\n"; }
+				$this->get_page_images($page_details, $this->item['SourceIdentifier']);
+
+				// Get or create OCR
 				if ($this->verbose) { print "Getting HOCR file\n"; }
 				$hocrs = $this->get_hocrs($page_details);
-
-				// Get our Images
-				if ($this->verbose) { print "Getting Page Images\n"; }
 				if (!$hocrs) {
-					$this->get_page_images($page_details, $this->item['SourceIdentifier'], true);
-					$hocrs = $this->get_hocrs($page_details);
-				} else {
-					$this->get_page_images($page_details, $this->item['SourceIdentifier']);
-				}
-
-				// Error handling
-				if (!$hocrs) {
-					$this->log->error("  Could not get HOCR file or it's empty.", ['pid' => \posix_getpid()]);
-					if ($this->verbose) { print "  ERROR: Could not get HOCR file or it's empty.\n"; }
-					throw new \Exception("Exception while processing segment $id: Could not get HOCR file for $ia_id");
+					if ($this->verbose) { print "HOCR not found. Creating it on our own\n"; }
+					$hocrs = $this->create_hocr($page_details, $this->item['SourceIdentifier']);
 				}
 				if ($this->verbose) { print "Reading HOCR file(s)\n"; }
 				foreach ($hocrs as $h => $rec) {
+					if ($this->verbose) { print "  Reading ".$hocrs[$h]['path']."\n"; }
 					$hocr = new \hOCRParser($hocrs[$h]['path']);
 					$hocrs[$h]['hocr'] = $hocr;
 				}
-				unset($hocr);
+
+				// We don't like articles that span two items
 				if (count($hocrs) > 1) {
 					$this->log->notice("  Segment $id spans multiple Books.", ['pid' => \posix_getpid()]);
 					if ($this->verbose) { print "  WARNING: Segment $id spans multiple Books.\n"; }
 					die;
 				}
-				
-
+			
 
 				// Calculate the height and width and aspect ratio of each page.
 				foreach ($page_details as $p => $page) {
@@ -319,9 +320,7 @@ class MakePDF {
 			if ($this->verbose) { print "Exception while processing segment $id: ".$e->getMessage()."\n"; }
 			$this->log->error("Exception while processing segment $id: ".$e->getMessage(), ['pid' => \posix_getpid()]);
 			throw new \Exception("Exception while processing segment $id: ".$e->getMessage());
-			return;
 		}
-
 	}
 
 	/*
@@ -556,39 +555,43 @@ class MakePDF {
 		$ret = [];
 		foreach ($pages as $p) {
 			$identifier = $p['BarCode'];
-			if (!isset($ret[$identifier])) {
-				$letter = substr($identifier,0,1);
-				$filename = $identifier.'_hocr.html';
-				$cache_path = $this->config->get('cache.paths.hocr').'/'.$filename;
-				if (!file_exists($cache_path)) {
-					$hocr = $this->config->get('paths.local_source')."/{$letter}/{$identifier}/{$identifier}_hocr.xml";
-					// Do we have the file locally?
-					if (file_exists($hocr)) {
-						// Do we have it on the Isilon?
-						copy($hocr, $cache_path);
-					} else {
-						// Get it from the internet archive
-						$url = 'https://archive.org/download/'.$identifier.'/'.$filename;
-						try {
-							// Suppress the warning because we'll check later if it's empty
-							$contents = @file_get_contents($url);
-							if ($contents) {
-								file_put_contents($cache_path, $contents);
-							} else {
-								if ($this->verbose) { print "  ERROR: Could not get HOCR from IA ($identifier)\n"; }
-								return null;	
-							}							
-						} catch (Exception $e) {
-							if ($this->verbose) { print "  ERROR: Unable to get HOCR from IAi ($identifier): ".$e->getMessage()."\n"; }
-							return null;
-						}
-						
-					}
-				}
+			$filename = $identifier.'_hocr.html';
+			$cache_path = $this->config->get('cache.paths.hocr').'/'.$filename;
+			$tmp_path = $this->config->get('paths.tmp').'/'.$filename;
+			if (file_exists($cache_path)) {
+				// Check in our local path
 				$ret[$identifier] = array('path' => $cache_path);
-				if (filesize($cache_path) == 0) {
-					unlink($cache_path);
+			} elseif (file_exists($tmp_path)) {
+				// Check in our temp path
+				$ret[$identifier] = array('path' => $tmp_path);
+			} else {
+				// Get it from the internet archive
+				$url = 'https://archive.org/download/'.$identifier.'/'.$filename;
+				try {
+					// Suppress the warning because we'll check later if it's empty
+					$contents = @file_get_contents($url);
+					if ($contents) {
+						file_put_contents($cache_path, $contents);
+						$ret[$identifier] = array('path' => $cache_path);
+					}							
+				} catch (Exception $e) {
+					if ($this->verbose) { print "  Error getting HOCR from IA ($identifier): ".$e->getMessage()."\n"; }
+				}
+			}
+
+			if (isset($ret[$identifier])) {
+				// Make sure we have data in the file
+				if (filesize($ret[$identifier]['path']) == 0) {
 					if ($this->verbose) { print "  HOCR Cache file is empty\n"; }
+					unlink($ret[$identifier]['path']);
+					return null;
+				}
+				// Make sure we can use this file
+				// Filenames must be in the title="" attribute
+				$data = file_get_contents($ret[$identifier]['path']);
+				if (preg_match('#archive.org/todo#', $data)) {
+					if ($this->verbose) { print "  HOCR Incomplete. archive.org/todo found\n"; }
+					unlink($ret[$identifier]['path']);
 					return null;
 				}
 			}
@@ -596,12 +599,77 @@ class MakePDF {
 		return $ret;
 	}
 
+	private function create_hocr($pages, $identifier) {
+		$ret = [];
+		if ($this->verbose) { print "  Generating hOCR with Tesseract\n"; }
+		// For each page run tesseract
+		foreach ($pages as $p => $rec) {
+			$hocr_filename = $this->config->get('paths.tmp').'/'.$rec['FileNamePrefix'].'.hocr';
+			$hocr_filebase = $this->config->get('paths.tmp').'/'.$rec['FileNamePrefix'];
+			if (!file_exists($hocr_filename)) {
+				$url = 'https://archive.org/metadata/'.$this->item['SourceIdentifier'].'/metadata/language';
+				$lang = json_decode(file_get_contents($url),true);
+				if ($lang == 'Array') {
+					print $this->item['SourceIdentifier'].": Lang IS ARRAY. QUITTING.\n";
+					die;
+				}
+				$lang = $this->_normalize_language($lang['result']);
+
+				if ($this->verbose) { print "    ".$rec['FileNamePrefix']."\n"; }
+				$cmd = "/usr/bin/tesseract ".($lang ? '-l '.$lang : '')." -c tessedit_page_number=0 -c ".
+					"tessedit_create_txt=0 -c tessedit_create_hocr=1 ".
+					"-c hocr_char_boxes=0 -c hocr_font_info=1 ".
+					"-c thresholding_method=0 ".$rec['JPGFile']." ".$hocr_filebase.' > /dev/null 2>&1';
+				`$cmd`;
+			}
+		}
+		// Combine the HOCR into one file
+		if ($this->verbose) { print "  Combining to final hOCR file\n"; }
+		$hocr_filename = $this->config->get('paths.tmp').'/'.$this->item['SourceIdentifier'].'_hocr.html';
+		$fo = fopen($hocr_filename,'w');
+		fwrite($fo, '<?xml version="1.0" encoding="UTF-8"?>'."\n");
+
+		fwrite($fo, '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"'."\n");
+		fwrite($fo, '    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'."\n");
+		fwrite($fo, '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">'."\n");
+		fwrite($fo, ' <head>'."\n");
+		fwrite($fo, '  <title></title>'."\n");
+		fwrite($fo, '  <meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>'."\n");
+		fwrite($fo, '  <meta name="ocr-system" content="tesseract 5.x.x" />'."\n");
+		fwrite($fo, '  <meta name="ocr-capabilities" content="ocr_page ocr_carea ocr_par ocr_line ocrx_word ocrp_wconf ocrp_lang ocrp_dir ocrp_font ocrp_fsize"/>'."\n");
+		fwrite($fo, ' </head>'."\n");
+		fwrite($fo, ' <body>'."\n");
+
+		foreach ($pages as $p => $rec) {
+
+			$hocr = new \DOMDocument();
+			$hocr->loadHTMLFile($this->config->get('paths.tmp').'/'.$rec['FileNamePrefix'].'.hocr');
+			$divs = $hocr->getElementsByTagName('div');
+			foreach ($divs as $d) {
+				if ($d->className == 'ocr_page') {
+					// Reset the ID because they can't be duplicated
+					$d->setAttribute('id','page_'.$rec['SequenceOrder']);
+					fwrite($fo, $hocr->saveHTML($d)."\n");
+				}
+			}
+		}
+		fwrite($fo, ' </body>'."\n");
+		fwrite($fo, ' </html>'."\n");
+		fclose($fo);
+
+		// Delete our intermediate files
+		if ($this->verbose) { print "  Cleaning up\n"; }
+		$old = glob($this->config->get('paths.tmp').'/'.$this->item['SourceIdentifier'].'_*.hocr');
+		$ret[$identifier] = array('path' => $hocr_filename);
+		foreach ($old as $f) { unlink($f); }
+		return $ret;
+	}
 	/*
 		GET PAGE IMAGES
 		Given an array of Page IDs, download the images from IA
 		(future versions of this will grab the image from our TAR file)
 	 */
-	private function get_page_images(&$pages, $identifier, $generate_ocr = false) {
+	private function get_page_images(&$pages, $identifier) {
 		$c = 1;
 		$total = count($pages);
 		foreach ($pages as $p => $rec) {
@@ -616,15 +684,15 @@ class MakePDF {
 				if ($this->verbose) { print " from Cache.\n"; }
 				$pages[$p]['JPGFile'] = $dest_filename;
 			} else {
-				if ($this->verbose) { print " from BHL.\n"; }
+				if ($this->verbose) { print " from BHL. ".$pages[$p]['PageImageURL']."\n"; }
 				$pages[$p]['JPGFile'] = $dest_filename;
 
 				@file_put_contents($dest_filename, file_get_contents($pages[$p]['PageImageURL']));
 				if (!file_exists($dest_filename) || filesize($dest_filename) == 0) {
 					$pages[$p]['JPGFile'] = null;
-					if ($this->verbose) { print "    ERROR: Could not find file {$prefix}\n"; }
-					print "[ERROR] Could not find file {$prefix} (pid => ".\posix_getpid().")";
-					throw new \Exception("Item {$identifier}: Could not find file {$prefix}");
+					if ($this->verbose) { print "    ERROR: Could not find image {$prefix}\n"; }
+					$this->log->error("Could not find image {$prefix}", ['pid' => \posix_getpid()]);
+					throw new \Exception("Item {$identifier}: Could not find image {$prefix}");
 				}
 			}
 
@@ -632,66 +700,23 @@ class MakePDF {
 			if (exif_imagetype($pages[$p]['JPGFile']) != IMAGETYPE_JPEG) {
 				if ($this->verbose) { print "    File is not a JPEG: {$prefix}.jpg\n"; }
 				$pages[$p]['JPGFile'] = null;
-				print "Item {$identifier}: File is not a JPEG: {$prefix}.jpg (pid => ".\posix_getpid().")";
+				$this->log->error("Item {$identifier}: File is not a JPEG: {$prefix}.jpg", ['pid' => \posix_getpid()]);
 				throw new \Exception("Item {$identifier}: File is not a JPEG: {$prefix}.jpg");
 			}
 			$c++;
 		}
+	}
 
-		if ($generate_ocr) {
-			if ($this->verbose) { print "    Generating hOCR with Tesseract\n"; }
-			// For each page run tesseract
-			foreach ($pages as $p => $rec) {
-				if (!file_exists('./cache/hocr/'.$rec['FileNamePrefix'].'.hocr')) {
-					$url = 'https://archive.org/metadata/'.$this->item['SourceIdentifier'].'/metadata/language';
-					$lang = json_decode(file_get_contents($url),true);
-					$lang = ($lang['result'] != 'UND' ? '-l '.$lang : '');
+	private function _normalize_language($l) {
+		if ($l == 'English') { return 'eng'; }
+		if ($l == 'Spanish') { return 'spa'; }
+		if ($l == 'French') { return 'fra'; }
+		if ($l == 'German') { return 'deu'; }
 
-					if ($this->verbose) { print "      ".$rec['FileNamePrefix']."\n"; }
-					$cmd = "/usr/bin/tesseract $lang -c tessedit_page_number=0 -c ".
-						"tessedit_create_txt=0 -c tessedit_create_hocr=1 ".
-						"-c hocr_char_boxes=0 -c hocr_font_info=1 ".
-						"-c thresholding_method=0 ".$rec['JPGFile']." ./cache/hocr/".$rec['FileNamePrefix'];
-					`$cmd`;
-				}
-			}
-			// Combine the HOCR into one file
-			if ($this->verbose) { print "    Combining to final hOCR file\n"; }
-			$fo = fopen('./cache/hocr/'.$this->item['SourceIdentifier'].'_hocr.html','w');
-			fwrite($fo, '<?xml version="1.0" encoding="UTF-8"?>'."\n");
 
-			fwrite($fo, '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"'."\n");
-			fwrite($fo, '    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'."\n");
-			fwrite($fo, '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">'."\n");
-			fwrite($fo, ' <head>'."\n");
-			fwrite($fo, '  <title></title>'."\n");
-			fwrite($fo, '  <meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>'."\n");
-			fwrite($fo, '  <meta name="ocr-system" content="tesseract 5.x.x" />'."\n");
-			fwrite($fo, '  <meta name="ocr-capabilities" content="ocr_page ocr_carea ocr_par ocr_line ocrx_word ocrp_wconf ocrp_lang ocrp_dir ocrp_font ocrp_fsize"/>'."\n");
-			fwrite($fo, ' </head>'."\n");
-			fwrite($fo, ' <body>'."\n");
-
-			foreach ($pages as $p => $rec) {
-
-				$hocr = new \DOMDocument();
-				$hocr->loadHTMLFile('./cache/hocr/'.$rec['FileNamePrefix'].'.hocr');
-				$divs = $hocr->getElementsByTagName('div');
-				foreach ($divs as $d) {
-					if ($d->className == 'ocr_page') {
-						// Reset the ID because they can't be duplicated
-						$d->setAttribute('id','page_'.$rec['SequenceOrder']);
-						fwrite($fo, $hocr->saveHTML($d)."\n");
-					}
-				}
-			}
-			fwrite($fo, ' </body>'."\n");
-			fwrite($fo, ' </html>'."\n");
-			fclose($fo);
-			if ($this->verbose) { print "    Cleaning up\n"; }
-			$old = glob('./cache/hocr/'.$this->item['SourceIdentifier'].'_*.hocr');
-			foreach ($old as $f) {
-				unlink($f);
-			}
+		if (strlen($l) > 3) {
+			print "Language is $l. Need to convert. Quitting\n";
+			die;
 		}
 	}
 
@@ -780,21 +805,39 @@ class MakePDF {
 	 */
 	private function validate_config() {
 
-		# do we have a BHL API Key
+		// do we have a BHL API Key
 		if (!$this->config->get('bhl.api_key')) {
 			die('BHL API Key not set.'."\n");
 		}
 
 		foreach ($this->config->get('cache.paths') as $p) {
-			# do the paths exist?
+			// do the paths exist?
 			if (!file_exists($p)) {
 				mkdir($p, 0700, true);
 			}
-			# can we write to the paths?
+			// can we write to the paths?
 				if (!is_writable($p)) {
 				die("Permission denied to write to $p\n");
 			}
 		}
+
+		// Do we have exiftool
+		$exiftool = '';
+		if (file_exists('/usr/bin/exiftool')) {	 $exiftool = '/usr/bin/exiftool'; }
+		if (file_exists('/usr/local/bin/exiftool')) { $exiftool = '/usr/local/bin/exiftool'; }
+		if (!$exiftool) {
+			die("Exiftool not found.\n");
+		} else {
+			$this->config['exiftool'] = $exiftool;
+		}
+
+		// We like our own temp folder
+		$this->config['paths.tmp'] = './tmp/'.posix_getpid();
+		if (!file_exists($this->config['paths.tmp'])) { 
+			@mkdir('./tmp');
+			@mkdir($this->config['paths.tmp']); 
+		}
+
 	}
 
 	/*
@@ -902,8 +945,7 @@ class MakePDF {
 		if (isset($part['Date'])) {
 			$metadata[] = "-XMP:Date=".escapeshellarg($part['Date']);
 		}
-
-		$cmd = '/usr/local/bin/exiftool -json -overwrite_original '.implode(' ', $metadata).' '.$pdf.' 2>&1';
+		$cmd = $this->config['exiftool'].' -json -overwrite_original '.implode(' ', $metadata).' '.$pdf.' 2>&1';
 		exec($cmd);
 	}	
 
