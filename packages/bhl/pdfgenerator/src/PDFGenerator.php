@@ -900,17 +900,20 @@ class MakePDF {
 			}
 			if (isset($part['Names'])) {
 				if (is_array($part['Names'])) {
+					$c = 0;
 					foreach ($part['Names'] as $n) {
 						$n = trim($n['NameConfirmed']);
 						if ($n) {
 							$metadata[] = "-keywords+=".escapeshellarg($n);
 						}
+						if ($c++ > 20) { break; }
 					}				
 				}
 			}
 
 			if (isset($part['Identifiers'])) {
 				if (is_array($part['Identifiers'])) {
+					$c = 0;
 					foreach ($part['Identifiers'] as $i) {
 						if ($i['IdentifierName'] == 'ISSN') {
 							$metadata[] = "-XMP:ISSN=".escapeshellarg($i['IdentifierValue']);
@@ -918,29 +921,33 @@ class MakePDF {
 						if ($i['IdentifierName'] == 'BioStor') {
 							$metadata[] = "-XMP-dc:Identifier=".escapeshellarg('BioStor:'.$i['IdentifierValue']);
 						}
+						if ($c++ > 20) { break; }
 					}				
 				}
 			}
 		}
 
-		$page_ids = [];
-		foreach ($part['Pages'] as $p) {
-			$page_ids[] = $p['PageID'];
-			$page_text = '';
-			if (isset($p['PageNumbers']) && $p['PageNumbers']) {
-				foreach ($p['PageNumbers'] as $pg) {
-					if (isset($pg['Number']) && $pg['Number']) {
-						$page_text .= $pg['Number'];
+		// Don't do this for more than 50 pages.
+		if (count($part['Pages']) >= 50) {
+			$page_ids = [];
+			foreach ($part['Pages'] as $p) {
+				$page_ids[] = $p['PageID'];
+				$page_text = '';
+				if (isset($p['PageNumbers']) && $p['PageNumbers']) {
+					foreach ($p['PageNumbers'] as $pg) {
+						if (isset($pg['Number']) && $pg['Number']) {
+							$page_text .= $pg['Number'];
+						}
 					}
 				}
+				if ($page_text) {
+					$metadata[] = "-XMP:PageInfo+=".escapeshellarg("{PageNumber={$page_text}}");
+				}
 			}
-			if ($page_text) {
-				$metadata[] = "-XMP:PageInfo+=".escapeshellarg("{PageNumber={$page_text}}");
-			}
+			// Save the Page IDs for future use
+			$metadata[] = "-XMP:Notes=".escapeshellarg("BHL PageIDs: ".implode(',', $page_ids));
+			// TODO Handle different Genres
 		}
-		// Save the Page IDs for future use
-		$metadata[] = "-XMP:Notes=".escapeshellarg("BHL PageIDs: ".implode(',', $page_ids));
-		// TODO Handle different Genres
 
 		if (isset($part['Date'])) {
 			$metadata[] = "-XMP:Date=".escapeshellarg($part['Date']);
