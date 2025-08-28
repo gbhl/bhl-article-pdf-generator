@@ -105,9 +105,14 @@ class MakePDF {
 				}
 			}
 			if (!isset($part['ItemID'])) {
-				if ($this->verbose) { print "Part has no item id!\n"; }
-				$this->log->notice("Segment $id has no item id.", ['pid' => \posix_getpid()]);
+				$this->log->error("Segment $id has no item id.", ['pid' => \posix_getpid()]);
+				if ($this->verbose) { print "  ERROR: Part has no item id.\n"; }
 				return false;                    
+			}
+			if (!count($part['Pages'])) {
+				$this->log->error("Segment $id has no pages.", ['pid' => \posix_getpid()]);	
+				if ($this->verbose) { print "  ERROR: Segment $id has no pages.\n"; }
+				return false;
 			}
 
 			// Turn that into a list of pages, because we need the prefix (maybe)
@@ -822,15 +827,9 @@ class MakePDF {
 		}
 
 		// Do we have exiftool
-		$exiftool = '';
-		if (file_exists('/usr/bin/exiftool')) {	 $exiftool = '/usr/bin/exiftool'; }
-		if (file_exists('/usr/local/bin/exiftool')) { $exiftool = '/usr/local/bin/exiftool'; }
-		if (!$exiftool) {
-			die("Exiftool not found.\n");
-		} else {
-			$this->config['exiftool'] = $exiftool;
-		}
-
+		if (!file_exists($this->config['exiftool']) ) {
+			die("Exiftool not found (".$this->config['exiftool'].").\n");
+		} 
 		// We like our own temp folder
 		$this->config['paths.tmp'] = './tmp/'.posix_getpid();
 		if (!file_exists($this->config['paths.tmp'])) { 
