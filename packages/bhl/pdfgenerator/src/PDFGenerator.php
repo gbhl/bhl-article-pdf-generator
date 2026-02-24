@@ -29,11 +29,12 @@ class MakePDF {
 	private $log;
 	private $verbose = false;
 	private $item;
+	private $source_identifier = '';
 
 	// Size of an A4 page
 	private $a4_width_mm = 210; // millimeters
 	private $a4_height_mm = 297; // millimeters
-
+	private $user_agent = 'Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0';
 	/*
 		CONSTRUCTOR
 		Set up logging, check config.
@@ -128,11 +129,20 @@ class MakePDF {
 			if (!$this->item) { return; }
 			$this->item = $this->item['Result'][0]; // deference this for ease of use
 
-			// Get the pages from BHL because maybe I need the file name prefix
-			$page_details = $this->get_bhl_pages($pages);
-
 			// Get the IA idenifier just because we may need it in the error logging
-			$ia_id = $this->item['SourceIdentifier'];
+			// Decide if we are a virtual item, if yes, use SourceIdentifier from that
+			$this->source_identifier = null;
+			if ($this->item['Source'] == 'Virtual Item') {
+				$this->source_identifier = $part['SourceIdentifier'];
+				if ($this->verbose) { print "This is a virtual item article.\n"; }
+				// Get the pages from BHL because maybe I need the file name prefix
+				$page_details = $this->get_bhl_pages($pages, $part['Pages']);
+			} else {
+				$this->source_identifier = $this->item['SourceIdentifier'];
+				// Get the pages from BHL because maybe I need the file name prefix
+				$page_details = $this->get_bhl_pages($pages, $this->item['Pages']);
+			}
+			
 	
 			$pdf = null;
 			// If only metadata changed, and the file can't be found,
@@ -151,14 +161,14 @@ class MakePDF {
 
 				// Get Images
 				if ($this->verbose) { print "Getting Page Images\n"; }
-				$this->get_page_images($page_details, $this->item['SourceIdentifier']);
+				$this->get_page_images($page_details, $this->source_identifier);
 
 				// Get or create OCR
 				if ($this->verbose) { print "Getting HOCR file\n"; }
 				$hocrs = $this->get_hocrs($page_details);
 				if (!$hocrs) {
 					if ($this->verbose) { print "HOCR not found. Creating it on our own\n"; }
-					$hocrs = $this->create_hocr($page_details, $this->item['SourceIdentifier']);
+					$hocrs = $this->create_hocr($page_details, $this->source_identifier);
 				}
 				if ($this->verbose) { print "Reading HOCR file(s)\n"; }
 				foreach ($hocrs as $h => $rec) {
@@ -223,7 +233,7 @@ class MakePDF {
 				$pdf->AddFont('NotoSans','IB', 'NotoSans-BoldItalic.ttf', true);
 
 				$params = [];
-				$c = 0;
+				$c = 1;
 				foreach ($pages as $pg) {
 					$p = $page_details['pageid-'.$pg];
 					if ($this->verbose) { print chr(13)."Adding Page {$c} of ".count($pages)." to PDF"; }
@@ -612,10 +622,10 @@ class MakePDF {
 			$hocr_filename = $this->config->get('paths.tmp').'/'.$rec['FileNamePrefix'].'.hocr';
 			$hocr_filebase = $this->config->get('paths.tmp').'/'.$rec['FileNamePrefix'];
 			if (!file_exists($hocr_filename)) {
-				$url = 'https://archive.org/metadata/'.$this->item['SourceIdentifier'].'/metadata/language';
+				$url = 'https://archive.org/metadata/'.$this->source_identifier.'/metadata/language';
 				$lang = json_decode(file_get_contents($url),true);
 				if ($lang == 'Array') {
-					print $this->item['SourceIdentifier'].": Lang IS ARRAY. QUITTING.\n";
+					print $this->source_identifier.": Lang IS ARRAY. QUITTING.\n";
 					die;
 				}
 				$lang = $this->_normalize_language($lang['result']);
@@ -630,7 +640,7 @@ class MakePDF {
 		}
 		// Combine the HOCR into one file
 		if ($this->verbose) { print "  Combining to final hOCR file\n"; }
-		$hocr_filename = $this->config->get('paths.tmp').'/'.$this->item['SourceIdentifier'].'_hocr.html';
+		$hocr_filename = $this->config->get('paths.tmp').'/'.$this->source_identifier.'_hocr.html';
 		$fo = fopen($hocr_filename,'w');
 		fwrite($fo, '<?xml version="1.0" encoding="UTF-8"?>'."\n");
 
@@ -664,11 +674,12 @@ class MakePDF {
 
 		// Delete our intermediate files
 		if ($this->verbose) { print "  Cleaning up\n"; }
-		$old = glob($this->config->get('paths.tmp').'/'.$this->item['SourceIdentifier'].'_*.hocr');
+		$old = glob($this->config->get('paths.tmp').'/'.$this->source_identifier.'_*.hocr');
 		$ret[$identifier] = array('path' => $hocr_filename);
 		foreach ($old as $f) { unlink($f); }
 		return $ret;
 	}
+
 	/*
 		GET PAGE IMAGES
 		Given an array of Page IDs, download the images from IA
@@ -691,7 +702,7 @@ class MakePDF {
 			} else {
 				if ($this->verbose) { print " from BHL. ".$pages[$p]['PageImageURL']."\n"; }
 				$pages[$p]['JPGFile'] = $dest_filename;
-
+				// TODO Get image from AWS instead of BHL
 				@file_put_contents($dest_filename, file_get_contents($pages[$p]['PageImageURL']));
 				if (!file_exists($dest_filename) || filesize($dest_filename) == 0) {
 					$pages[$p]['JPGFile'] = null;
@@ -731,8 +742,24 @@ class MakePDF {
 	 */
 	private function get_bhl_segment($id) {
 		$url = 'https://www.biodiversitylibrary.org/api3?op=GetPartMetadata&id='.$id.'&format=json&pages=t&names=t&apikey='.$this->config->get('bhl.api_key');
-		$data = file_get_contents($url);
+		$ch = curl_init($url);
+		curl_setopt($ch, CURLOPT_HEADER, 0);
+		curl_setopt($ch, CURLOPT_USERAGENT, $this->user_agent);
+		curl_setopt($ch, CURLOPT_REFERER, 'https://www.biodiversitylibrary.org/');
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);  
+		$data = curl_exec($ch);
+		
+  		if (curl_errno($ch)) {
+			print "Error: ".curl_error($ch)."\n";
+			die;
+		}
+		$httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		if ($httpcode != 200) {
+			print "Error: HTTP ".$httpcode." returned.\n";
+			die;
+		}
 		$object = json_decode($data, true);
+		curl_close($ch);
 
 		# check our results
 		if (strtolower($object['Status']) == 'ok') {
@@ -756,8 +783,24 @@ class MakePDF {
 	private function get_bhl_item($id) {
 		# read from the cache
 		$url = 'https://www.biodiversitylibrary.org/api3?op=GetItemMetadata&id='.$id.'&format=json&pages=t&names=f&parts=f&apikey='.$this->config->get('bhl.api_key');
-		$data = file_get_contents($url);
+		$ch = curl_init($url);
+		curl_setopt($ch, CURLOPT_HEADER, 0);
+		curl_setopt($ch, CURLOPT_USERAGENT, $this->user_agent);
+		curl_setopt($ch, CURLOPT_REFERER, 'https://www.biodiversitylibrary.org/');
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);  
+		$data = curl_exec($ch);
+		
+  		if (curl_errno($ch)) {
+			print "Error: ".curl_error($ch)."\n";
+			die;
+		}
+		$httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		if ($httpcode != 200) {
+			print "Error: HTTP ".$httpcode." returned.\n";
+			die;
+		}
 		$object = json_decode($data, true);
+		curl_close($ch);
 
 		# check our results
 		if (strtolower($object['Status']) == 'ok') {
@@ -778,24 +821,24 @@ class MakePDF {
 		GET BHL PAGES
 		For a given item id get the pages at BHL
 	 */
-	private function get_bhl_pages($pages = array()) {
+	private function get_bhl_pages($pages = array(), $object_pages = array()) {
 		$rows = [];
 		if (count($pages) > 0) {
 			foreach ($pages as $page_id) {
 				$seq = -1;
 
-				for ($i=0; $i<count($this->item['Pages']); $i++) {
-					if ($this->item['Pages'][$i]['PageID'] == $page_id) {
-						$seq = $i;
+				for ($i=0; $i<count($object_pages); $i++) {
+					if ($object_pages[$i]['PageID'] == $page_id) {
+						$seq = $i+1;
 						break;
 					}
 				}
 				$rows['pageid-'.$page_id] = array(
 					'PageID' => $page_id,
-					'FileNamePrefix' => sprintf("%s_%04d", $this->item['SourceIdentifier'], $seq),
+					'FileNamePrefix' => sprintf("%s_%04d", $this->source_identifier, $seq),
 					'ItemID' => $this->item['ItemID'], 
 					'SequenceOrder' => $seq,
-					'BarCode' => $this->item['SourceIdentifier'],
+					'BarCode' => $this->source_identifier,
 					'PageImageURL' => 'https://www.biodiversitylibrary.org/pageimage/'.$page_id
 				);
 			}
@@ -959,10 +1002,15 @@ class MakePDF {
 	  Be Nice to the disk. It is your friend.
 	 */
 	private function clean_cache() {
+		if ($this->verbose) { print "  Cleaning Image Cache...\n"; }
 		`find {$this->config->get('cache.paths.image')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
+		if ($this->verbose) { print "  Cleaning Resized Cache...\n"; }
 		`find {$this->config->get('cache.paths.resize')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
+		if ($this->verbose) { print "  Cleaning PDF Cache...\n"; }
 		`find {$this->config->get('cache.paths.pdf')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
+		if ($this->verbose) { print "  Cleaning JSON Cache...\n"; }
 		`find {$this->config->get('cache.paths.json')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
+		if ($this->verbose) { print "  Cleaning HOCR Cache...\n"; }
 		`find {$this->config->get('cache.paths.hocr')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
 	}
 
