@@ -336,6 +336,7 @@ class MakePDF {
 			$this->log->error("Exception while processing segment $id: ".$e->getMessage(), ['pid' => \posix_getpid()]);
 			throw new \Exception("Exception while processing segment $id: ".$e->getMessage());
 		}
+		return true;
 	}
 
 	/*

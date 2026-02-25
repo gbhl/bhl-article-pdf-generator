@@ -12,6 +12,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 require_once './packages/bhl/pdfgenerator/src/PDFGenerator.php';
 require_once './packages/bhl/pdfgenerator/src/ForceJustify.php';
 ini_set('memory_limit','1024M');
+putenv("TESSDATA_PREFIX=/usr/share/tesseract/tessdata_best-main");
 
 use PDODb;
 use Noodlehaus\Config;
@@ -52,3 +53,4 @@ if (!$pg && !$md) {
 print "Generating PDF with changed".($pg ? " pages " : "").($md ? " metadata " : "")."\n";
 
 $pdfgen->generate_article_pdf($id, $pg, $md);
+sleep(3);
