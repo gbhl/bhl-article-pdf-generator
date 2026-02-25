@@ -43,8 +43,11 @@ $process_messsage = function($msg){
 	print "Generating pdf for ID $id\n";
 	try {
 		// Generate the PDF
-		$pdfgen->generate_article_pdf($id, ($body[3] == 'page'), ($body[3] == 'metadata'));
-		$msg->ack();
+		$ret = $pdfgen->generate_article_pdf($id, ($body[3] == 'page'), ($body[3] == 'metadata'));
+		if (!$ret) { 
+			$channel->basic_publish($msg, '', $config->get('mq.error_queue_name'));
+		}
+		$msg->ack();	
 	} catch (\Exception $e) {
 		# Publish the ID to the error queue. THIS IS A HACK. I think.
 		$channel->basic_publish($msg, '', $config->get('mq.error_queue_name'));
