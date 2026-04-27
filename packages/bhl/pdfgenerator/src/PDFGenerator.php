@@ -633,6 +633,7 @@ class MakePDF {
 	private function create_hocr($pages, $identifier) {
 		$ret = [];
 		if ($this->verbose) { print "  Generating hOCR with Tesseract\n"; }
+		putenv('TESSDATA_PREFIX='.$this->config->get('paths.tessdata'));
 		// For each page run tesseract
 		foreach ($pages as $p => $rec) {
 			$hocr_filename = $this->config->get('paths.tmp').'/'.$rec['FileNamePrefix'].'.hocr';
@@ -647,7 +648,8 @@ class MakePDF {
 				$lang = $this->_normalize_language($lang['result']);
 
 				if ($this->verbose) { print "    ".$rec['FileNamePrefix']."\n"; }
-				$cmd = "/usr/bin/tesseract ".($lang ? '-l '.$lang : '')." -c tessedit_page_number=0 -c ".
+				$tesseract = $this->config->get('paths.tesseract');
+				$cmd = $tesseract." ".($lang ? '-l '.$lang : '')." -c tessedit_page_number=0 -c ".
 					"tessedit_create_txt=0 -c tessedit_create_hocr=1 ".
 					"-c hocr_char_boxes=0 -c hocr_font_info=1 ".
 					"-c thresholding_method=0 ".$rec['JPGFile']." ".$hocr_filebase.' > /dev/null 2>&1';

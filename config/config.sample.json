@@ -18,7 +18,8 @@
 	"paths": {
 		"tmp": "./tmp",
 		"output": "./output",
-		"local_source": "PATH"
+		"tesseract": "/usr/bin/tesseract",
+		"tessdata": "/usr/share/tesseract/tessdata_best-main"
 	},
 	"image": {
 		"resize": "0.50"

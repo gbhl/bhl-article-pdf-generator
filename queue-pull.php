@@ -12,7 +12,7 @@ use BHL\PDFGenerator\MakePDF;
 
 $config = new Config('config/config.json');
 $pdfgen = new MakePDF($config);
-$limit = 1;
+$limit = 100;
 
 ini_set("memory_limit", $config->get('max_memory'));
 
