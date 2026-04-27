@@ -43,13 +43,11 @@ class MakePDF {
 		$this->config = $config;
 		$this->validate_config();
 		if ($verbose) {
-			print "Setting verbosity from constructor\n";
 			$this->verbose = $verbose;
 		}
 		
 		// Allow config to set verbosity
 		if ($this->config->get('verbose')) {
-			print "Setting verbosity from config\n";
 			$this->verbose = true;
 		}
 
@@ -236,7 +234,7 @@ class MakePDF {
 				$c = 1;
 				foreach ($pages as $pg) {
 					$p = $page_details['pageid-'.$pg];
-					if ($this->verbose) { print chr(13)."Adding Page {$c} of ".count($pages)." to PDF"; }
+					if ($this->verbose) { print "Adding Page {$c} of ".count($pages)." to PDF\n"; }
 					// Resize the image
 					$xy_factor = 1;
 					if ($this->config->get('image.resize') != 1) {
@@ -337,6 +335,23 @@ class MakePDF {
 			throw new \Exception("Exception while processing segment $id: ".$e->getMessage());
 		}
 		return true;
+	}
+	
+
+	public function delete_article_pdf($id) {
+
+		// Set our filename
+		$L1 = substr((string)$id, 0, 1);
+		$L2 = substr((string)$id, 1, 1);
+		$output_filename = $this->config->get('paths.output').'/'.$L1.'/'.$L2.'/bhl-segment-'.$id.($this->config->get('image.desaturate') ? '-grey' : '').'.pdf';
+
+		// Delete it if it's there
+		if (file_exists($output_filename)) {
+			unlink($output_filename);
+			return true;
+		}
+
+		return false;
 	}
 
 	/*
@@ -703,8 +718,14 @@ class MakePDF {
 			} else {
 				if ($this->verbose) { print " from BHL. ".$pages[$p]['PageImageURL']."\n"; }
 				$pages[$p]['JPGFile'] = $dest_filename;
+
+				$opts = [ "http" => [
+					"method" => "GET",
+					"header" => "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0"
+				]];
+				$context = stream_context_create($opts);
 				// TODO Get image from AWS instead of BHL
-				@file_put_contents($dest_filename, file_get_contents($pages[$p]['PageImageURL']));
+				file_put_contents($dest_filename, file_get_contents($pages[$p]['PageImageURL'], false, $context));
 				if (!file_exists($dest_filename) || filesize($dest_filename) == 0) {
 					$pages[$p]['JPGFile'] = null;
 					if ($this->verbose) { print "    ERROR: Could not find image {$prefix}\n"; }
