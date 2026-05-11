@@ -713,11 +713,11 @@ class MakePDF {
 			}
 
 			// Verify this is an image!
-			if (exif_imagetype($pages[$p]['JPGFile']) != IMAGETYPE_JPEG) {
-				if ($this->verbose) { print "    File is not a JPEG: {$prefix}.jpg\n"; }
+			if (exif_imagetype($pages[$p]['JPGFile']) != IMAGETYPE_JPEG && exif_imagetype($pages[$p]['JPGFile']) != IMAGETYPE_WEBP) {
+				if ($this->verbose) { print "    File is not a JPEG/WEBP: {$prefix}.jpg\n"; }
 				$pages[$p]['JPGFile'] = null;
-				$this->log->error("Item {$identifier}: File is not a JPEG: {$prefix}.jpg", ['pid' => \posix_getpid()]);
-				throw new \Exception("Item {$identifier}: File is not a JPEG: {$prefix}.jpg");
+				$this->log->error("Item {$identifier}: File is not a JPEG/WEBP: {$prefix}.jpg", ['pid' => \posix_getpid()]);
+				throw new \Exception("Item {$identifier}: File is not a JPEG/WEBP: {$prefix}.jpg");
 			}
 			$c++;
 		}
