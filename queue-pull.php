@@ -31,24 +31,31 @@ $process_messsage = function($msg){
 	global $channel;
 	global $config;
 
-#	$message = explode('|', trim($msg->body));
-#	$id = $message[2];
-#	print "Generating pdf for ID $id\n";
-#	$pdfgen->generate_article_pdf($id);
-#	$msg->ack();
-	
 	$body = explode('|', trim($msg->body));
-	if (!isset($body[3])) { $body[3] = 'page'; } // If we get no directive, use "page"
-	$id = $body[2];
-	print "Generating pdf for ID $id\n";
-	try {
-		// Generate the PDF
-		$pdfgen->generate_article_pdf($id, ($body[3] == 'page'), ($body[3] == 'metadata'));
-		$msg->ack();
-	} catch (\Exception $e) {
-		# Publish the ID to the error queue. THIS IS A HACK. I think.
-		$channel->basic_publish($msg, '', $config->get('mq.error_queue_name'));
-		$msg->ack();
+
+	if ($body[0] == 'put') {
+		if (!isset($body[3])) { $body[3] = 'page'; } // If we get no directive, use "page"
+		$id = $body[2];
+		try {
+			// Generate the PDF
+			$ret = $pdfgen->generate_article_pdf($id, ($body[3] == 'page'), ($body[3] == 'metadata'));
+			if (!$ret) { 
+				$channel->basic_publish($msg, '', $config->get('mq.error_queue_name'));
+			}
+			$msg->ack();	
+		} catch (\Exception $e) {
+			# Log the error
+			$fh = fopen('log/queue-pull-error.log','a');
+			fwrite($fh, date('Y-m-d h:i:s a', time()).": ".$e->getMessage());
+			fclose($fh);
+
+			# Publish the ID to the error queue. THIS IS A HACK. I think.
+			$channel->basic_publish($msg, '', $config->get('mq.error_queue_name'));
+			$msg->ack();
+		}
+	} elseif ($body[1] == 'delete') {
+		# Delete the article from disk
+		$pdfgen->delete_article_pdf($id);
 	}
 };
 
