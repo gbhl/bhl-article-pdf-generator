@@ -98,7 +98,7 @@ class MakePDF {
 
 			if (isset($part['ExternalUrl'])) {
 				if ($part['ExternalUrl'] != '') {
-					if ($this->verbose) { print "Part points to an external URL. Skipping.\n"; }
+					print "Part $id points to an external URL. Skipping.\n";
 					$this->log->notice("Segment $id points to an external URL. Skipping.", ['pid' => \posix_getpid()]);
 					return;
 				}
@@ -516,12 +516,14 @@ class MakePDF {
 			$pdf->Write($line_height, 'Rights Holder: '.$this->item['RightsHolder']);
 			$pdf->Ln($line_height, '');
 		}
-		if (isset($part['LicenseUrl']) && $part['LicenseUrl']) {
-			$pdf->Write($line_height, 'License: ');
-			$pdf->SetFont('NotoSans', 'U', $font_size); // Underline Regular
-			$pdf->SetTextColor(76, 103, 155); // Blue
-			$pdf->Write($line_height, $part['LicenseUrl'], $part['LicenseUrl']);
-			$pdf->Ln($line_height, '');
+		if (isset($part['LicenseUrl'])) {
+			if ($part['LicenseUrl']) {
+				$pdf->Write($line_height, 'License: ');
+				$pdf->SetFont('NotoSans', 'U', $font_size); // Underline Regular
+				$pdf->SetTextColor(76, 103, 155); // Blue
+				$pdf->Write($line_height, $part['LicenseUrl'], $part['LicenseUrl']);
+				$pdf->Ln($line_height, '');
+			}
 		}
 		if (isset($this->item['Rights']) && $this->item['Rights']) {
 			$pdf->SetTextColor(0, 0, 0); // Black
@@ -737,11 +739,11 @@ class MakePDF {
 			}
 
 			// Verify this is an image!
-			if (exif_imagetype($pages[$p]['JPGFile']) != IMAGETYPE_JPEG) {
-				if ($this->verbose) { print "    File is not a JPEG: {$prefix}.jpg\n"; }
+			if (exif_imagetype($pages[$p]['JPGFile']) != IMAGETYPE_JPEG && exif_imagetype($pages[$p]['JPGFile']) != IMAGETYPE_WEBP) {
+				if ($this->verbose) { print "    File is not a JPEG/WEBP: {$prefix}.jpg\n"; }
 				$pages[$p]['JPGFile'] = null;
-				$this->log->error("Item {$identifier}: File is not a JPEG: {$prefix}.jpg", ['pid' => \posix_getpid()]);
-				throw new \Exception("Item {$identifier}: File is not a JPEG: {$prefix}.jpg");
+				$this->log->error("Item {$identifier}: File is not a JPEG/WEBP: {$prefix}.jpg", ['pid' => \posix_getpid()]);
+				throw new \Exception("Item {$identifier}: File is not a JPEG/WEBP: {$prefix}.jpg");
 			}
 			$c++;
 		}
