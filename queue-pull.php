@@ -31,6 +31,7 @@ $process_messsage = function($msg){
 	global $channel;
 	global $config;
 
+	print "---------> ".$msg->body."\n";
 	$body = explode('|', trim($msg->body));
 
 	if ($body[0] == 'put') {
@@ -53,13 +54,17 @@ $process_messsage = function($msg){
 			$channel->basic_publish($msg, '', $config->get('mq.error_queue_name'));
 			$msg->ack();
 		}
-	} elseif ($body[1] == 'delete') {
+	} elseif ($body[0] == 'delete') {
+		$id = $body[2];
 		# Delete the article from disk
 		$pdfgen->delete_article_pdf($id);
+		$msg->ack();	
 	}
 };
+print "Consuming ".$config->get('mq.queue_name')."...\n";
 
 $channel->basic_consume($config->get('mq.queue_name'), '', false, false, false, false, $process_messsage);
+
 
 $count = 1;
 while (count($channel->callbacks)) {
