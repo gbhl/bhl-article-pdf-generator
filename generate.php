@@ -50,7 +50,6 @@ if (!$pg && !$md) {
 	print "USAGE: php generate.php ID (page|metadata)\n";
 	die;
 }
-print "Generating PDF with changed".($pg ? " pages " : "").($md ? " metadata " : "")."\n";
+print "Generating PDF $id with changed".($pg ? " pages " : "").($md ? " metadata " : "")."\n";
 
 $pdfgen->generate_article_pdf($id, $pg, $md);
-sleep(3);

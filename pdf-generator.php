@@ -7,7 +7,7 @@
 // pushing through the BHL PDF message queue.
 // ******************************************
 
-$max = 5;
+$max = 2;
 $child_script = "queue-pull.php";
 
 if (isset($argv[1])) {
@@ -42,7 +42,7 @@ while (true) {
 	if ($count < $max) {
 		log_message("Parent spawning child...");
 		clear_cache();
-		$command =  PHP_BINARY." {$child_script} > /dev/null 2>&1 &";
+		$command =  PHP_BINARY." {$child_script} >> queue-pull-out.log 2>&1 &";
 		`$command`;
 	}
 	sleep(5);
