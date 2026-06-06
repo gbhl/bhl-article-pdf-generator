@@ -14,7 +14,8 @@
 				"pear/archive_tar": "1.4.x-dev",
 				"hassankhan/config": "dev-develop",
 				"monolog/monolog": "2.x-dev",
-				"smalot/pdfparser": "dev-master"
+				"smalot/pdfparser": "dev-master",
+				"arhitector/php-djvu": "dev-master"
 		},
 		"minimum-stability": "dev"
 }

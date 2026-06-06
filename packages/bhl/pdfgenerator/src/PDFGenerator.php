@@ -11,6 +11,7 @@ use setasign\Fpdi\Tfpdf\Fpdi;
 use setasign\Fpdi\PdfReader;
 
 require_once(dirname(__FILE__) . '/../lib/hOCR.php');
+require_once(dirname(__FILE__) . '/../lib/djvu.php');
 
 define("_SYSTEM_TTFONTS", dirname(__FILE__).'/../assets/noto-sans/');
 
@@ -162,17 +163,33 @@ class MakePDF {
 				$this->get_page_images($page_details, $this->source_identifier);
 
 				// Get or create OCR
-				if ($this->verbose) { print "Getting HOCR file\n"; }
+				$ocr_source = 'hocr';
+				$hocrs = null;
+
+				if ($this->verbose) { print "Getting hOCR file\n"; }
 				$hocrs = $this->get_hocrs($page_details);
 				if (!$hocrs) {
-					if ($this->verbose) { print "HOCR not found. Creating it on our own\n"; }
+					if ($this->verbose) { print "hOCR not found. Creating it on our own\n"; }
 					$hocrs = $this->create_hocr($page_details, $this->source_identifier);
 				}
-				if ($this->verbose) { print "Reading HOCR file(s)\n"; }
+
+				// Fall back to DJVU if needede
+				if (!$hocrs) {
+					if ($this->verbose) { print "Didn't get hOCR, falling back to DjVu file\n"; }
+					$hocrs = $this->get_djvus($page_details);
+					$ocr_source = 'djvu';
+				}
+
+				if ($this->verbose) { print "Reading OCR file(s)\n"; }
 				foreach ($hocrs as $h => $rec) {
 					if ($this->verbose) { print "  Reading ".$hocrs[$h]['path']."\n"; }
-					$hocr = new \hOCRParser($hocrs[$h]['path']);
-					$hocrs[$h]['hocr'] = $hocr;
+					if ($ocr_source == 'djvu') {
+						$djvu = new \PhpDjvu($hocrs[$h]['path']);
+						$hocrs[$h]['hocr'] = $djvu;
+					} else {
+						$hocr = new \hOCRParser($hocrs[$h]['path']);
+						$hocrs[$h]['hocr'] = $hocr;
+					}
 				}
 
 				// We don't like articles that span two items
@@ -616,7 +633,6 @@ class MakePDF {
 				// Make sure we have data in the file
 				if (filesize($ret[$identifier]['path']) == 0) {
 					if ($this->verbose) { print "  HOCR Cache file is empty\n"; }
-					unlink($ret[$identifier]['path']);
 					return null;
 				}
 				// Make sure we can use this file
@@ -624,7 +640,6 @@ class MakePDF {
 				$data = file_get_contents($ret[$identifier]['path']);
 				if (preg_match('#archive.org/todo#', $data)) {
 					if ($this->verbose) { print "  HOCR Incomplete. archive.org/todo found\n"; }
-					unlink($ret[$identifier]['path']);
 					return null;
 				}
 			}
@@ -634,6 +649,7 @@ class MakePDF {
 
 	private function create_hocr($pages, $identifier) {
 		$ret = [];
+		$lang = '';
 		if ($this->verbose) { print "  Generating hOCR with Tesseract\n"; }
 		putenv('TESSDATA_PREFIX='.$this->config->get('paths.tessdata'));
 		// For each page run tesseract
@@ -641,20 +657,22 @@ class MakePDF {
 			$hocr_filename = $this->config->get('paths.tmp').'/'.$rec['FileNamePrefix'].'.hocr';
 			$hocr_filebase = $this->config->get('paths.tmp').'/'.$rec['FileNamePrefix'];
 			if (!file_exists($hocr_filename)) {
-				$url = 'https://archive.org/metadata/'.$this->source_identifier.'/metadata/language';
-				$lang = json_decode(file_get_contents($url),true);
-				if ($lang == 'Array') {
-					print $this->source_identifier.": Lang IS ARRAY. QUITTING.\n";
-					die;
+				if (!$lang) {
+					$url = 'https://archive.org/metadata/'.$this->source_identifier.'/metadata/language';
+					$lang = json_decode(file_get_contents($url),true);
+					if ($lang == 'Array') {
+						print $this->source_identifier.": Lang IS ARRAY. QUITTING.\n";
+						die;
+					}
+					$lang = $this->_normalize_language($lang['result']);
 				}
-				$lang = $this->_normalize_language($lang['result']);
 
 				if ($this->verbose) { print "    ".$rec['FileNamePrefix']."\n"; }
 				$tesseract = $this->config->get('paths.tesseract');
 				$cmd = $tesseract." ".($lang ? '-l '.$lang : '')." -c tessedit_page_number=0 -c ".
 					"tessedit_create_txt=0 -c tessedit_create_hocr=1 ".
 					"-c hocr_char_boxes=0 -c hocr_font_info=1 ".
-					"-c thresholding_method=0 ".$rec['JPGFile']." ".$hocr_filebase.' > /dev/null 2>&1';
+					"-c thresholding_method=0 ".$rec['JPGFile']." ".$hocr_filebase; //.' > /dev/null 2>&1';
 				`$cmd`;
 			}
 		}
@@ -760,6 +778,7 @@ class MakePDF {
 			print "Language is $l. Need to convert. Quitting\n";
 			die;
 		}
+		return $l;
 	}
 
 	/* 
@@ -1029,15 +1048,15 @@ class MakePDF {
 	 */
 	private function clean_cache() {
 		if ($this->verbose) { print "  Cleaning Image Cache...\n"; }
-		`find {$this->config->get('cache.paths.image')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
+		`find {$this->config->get('cache.paths.image')} -ctime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
 		if ($this->verbose) { print "  Cleaning Resized Cache...\n"; }
-		`find {$this->config->get('cache.paths.resize')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
+		`find {$this->config->get('cache.paths.resize')} -ctime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
 		if ($this->verbose) { print "  Cleaning PDF Cache...\n"; }
-		`find {$this->config->get('cache.paths.pdf')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
+		`find {$this->config->get('cache.paths.pdf')} -ctime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
 		if ($this->verbose) { print "  Cleaning JSON Cache...\n"; }
-		`find {$this->config->get('cache.paths.json')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
+		`find {$this->config->get('cache.paths.json')} -ctime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
 		if ($this->verbose) { print "  Cleaning HOCR Cache...\n"; }
-		`find {$this->config->get('cache.paths.hocr')} -mtime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
+		`find {$this->config->get('cache.paths.hocr')} -ctime +{$this->config->get('cache.lifetime')} -exec rm {} \; > /dev/null 2>&1`;
 	}
 
 	private function get_citation($part) {
@@ -1109,5 +1128,44 @@ class MakePDF {
 		}
 		$citation = str_replace("\0", "", $citation);
 		return $citation;
+	}
+
+	/*
+		GET DJVU Files
+		Download the DjVu file(s) from the Internet Archive
+	 */
+	private function get_djvus($pages) {
+		$ret = [];
+		foreach ($pages as $p) {
+			$identifier = $p['BarCode'];
+			$filename = $identifier.'_djvu.xml';
+			$cache_path = $this->config->get('cache.paths.djvu').'/'.$filename;
+			$tmp_path = $this->config->get('paths.tmp').'/'.$filename;
+			if (file_exists($cache_path)) {
+				$ret[$identifier] = array('path' => $cache_path);
+			} elseif (file_exists($tmp_path)) {
+				$ret[$identifier] = array('path' => $tmp_path);
+			} else {
+				$url = 'https://archive.org/download/'.$identifier.'/'.$identifier.'_djvu.xml';
+				try {
+					$contents = @file_get_contents($url);
+					if ($contents && strlen($contents) > 0) {
+						file_put_contents($cache_path, $contents);
+						$ret[$identifier] = array('path' => $cache_path);
+					}
+				} catch (Exception $e) {
+					if ($this->verbose) { print "  Error getting DjVu from IA ($identifier): ".$e->getMessage()."\n"; }
+				}
+			}
+
+			if (isset($ret[$identifier])) {
+				if (filesize($ret[$identifier]['path']) == 0) {
+					if ($this->verbose) { print "  DjVu file is empty\n"; }
+					unlink($ret[$identifier]['path']);
+					return null;
+				}
+			}
+		}
+		return $ret;
 	}
 }
